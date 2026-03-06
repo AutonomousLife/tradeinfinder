@@ -350,7 +350,7 @@ function createPath(args: {
     resaleNetValue: resale?.valueAmount,
     resaleDelta: resale ? netValue - resale.valueAmount : undefined,
     effortLabel: effort,
-    links: buildPathLinks({ acquisition, merchant, targetDeviceSlug: args.targetDevice?.slug ?? args.record.targetDeviceSlug ?? args.device.slug }),
+    links: buildPathLinks({ deviceSlug: args.device.slug, acquisition, merchant, targetDeviceSlug: args.targetDevice?.slug ?? args.record.targetDeviceSlug ?? undefined }),
   };
 
   path.tags = pathTags(path);
@@ -858,4 +858,5 @@ export function getComparePageModel(slug: string): ComparePageModel | null {
     boards: buildUpgradeOptimizer({ currentDeviceSlug: oldDevice.slug, targetDeviceSlug: newDevice.slug, condition: "good" }).boards,
   };
 }
+
 
