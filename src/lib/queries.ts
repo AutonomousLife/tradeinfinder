@@ -14,6 +14,7 @@ export function getSearchSuggestions(query: string) {
   return {
     devices: devices.filter((device) => `${device.brand} ${device.model}`.toLowerCase().includes(needle)),
     merchants: merchants.filter((merchant) => merchant.name.toLowerCase().includes(needle)),
-    offers: offers.filter((offer) => `${offer.slug} ${offer.valueType} ${offer.storeId}`.toLowerCase().includes(needle)),
+    offers: offers.filter((offer) => `${offer.slug} ${offer.valueType} ${offer.merchantId} ${offer.sourceName}`.toLowerCase().includes(needle)),
   };
 }
+

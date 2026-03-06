@@ -22,10 +22,11 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const valueType = (getSearchParam(resolved.valueType, "all") ?? "all") as "all" | "instant_credit" | "purchase_credit" | "store_credit" | "gift_card";
   const sortBy = (getSearchParam(resolved.sortBy, "highest-value") ?? "highest-value") as "highest-value" | "easiest" | "best-upgrade" | "highest-confidence" | "newest";
   const targetDevice = getSearchParam(resolved.targetDevice) || undefined;
+  const condition = (getSearchParam(resolved.condition, "good") ?? "good") as "good" | "damaged" | "poor";
   const finder = buildTradeInFinder({
     currentDeviceSlug: getSearchParam(resolved.currentDevice, "iphone-13-128") ?? "iphone-13-128",
     targetDeviceSlug: targetDevice,
-    condition: (getSearchParam(resolved.condition, "good") ?? "good") as "mint" | "good" | "fair" | "cracked",
+    condition,
     merchantSlug: getSearchParam(resolved.merchant),
     valueType,
     sortBy,
@@ -33,7 +34,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
 
   return (
     <PageShell className="gap-10 pb-24 pt-10">
-      <SectionHeading eyebrow="Trade-in finder" title="See the best immediate value for your current phone." description="Results compare simple store paths against likely resale value so you can decide whether to trade in, sell, or upgrade without hidden lock-in math." />
+      <SectionHeading eyebrow="Trade-in finder" title="See the best immediate value for your current phone." description="Results compare direct store value against likely resale value so you can decide whether to trade in, sell, or upgrade with cleaner confidence signals." />
       <div className="grid gap-6 xl:grid-cols-[380px_1fr]">
         <QuickStartForm devices={devices} merchants={merchants} defaultCurrentDevice={finder.inputs.currentDevice.slug} defaultTargetDevice={finder.inputs.targetDevice?.slug} defaultMerchant={finder.inputs.merchant?.slug} defaultCondition={finder.inputs.condition} defaultSortBy={sortBy} defaultValueType={valueType} mode="finder" />
         <FinderResults model={finder} />
@@ -41,3 +42,4 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     </PageShell>
   );
 }
+

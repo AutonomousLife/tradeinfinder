@@ -19,10 +19,10 @@ export async function generateMetadata({ params }: OfferPageProps): Promise<Meta
   const model = getOfferPageModel(slug);
   if (!model) return {};
 
-  const target = model.offer.purchaseCreditTargetOptional ?? model.offer.targetDeviceOptional ?? "compatible phones";
+  const target = model.offer.targetDeviceSlug ?? "compatible phones";
   return {
     title: `${model.offer.merchant.name} trade-in offer`,
-    description: `${model.offer.merchant.name} trade-in offer for ${target} with confidence notes and accepted devices.`,
+    description: `${model.offer.merchant.name} trade-in offer for ${target} with confidence notes and source freshness.`,
   };
 }
 
@@ -37,3 +37,4 @@ export default async function OfferPage({ params }: OfferPageProps) {
     </PageShell>
   );
 }
+

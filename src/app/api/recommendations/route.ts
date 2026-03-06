@@ -2,8 +2,8 @@
 
 import { buildTradeInFinder } from "@/lib/engine";
 
-function parseCondition(value: string | null): "mint" | "good" | "fair" | "cracked" {
-  return value === "mint" || value === "fair" || value === "cracked" ? value : "good";
+function parseCondition(value: string | null): "good" | "damaged" | "poor" {
+  return value === "damaged" || value === "poor" ? value : "good";
 }
 
 export async function GET(request: Request) {
@@ -20,3 +20,4 @@ export async function GET(request: Request) {
     }),
   );
 }
+

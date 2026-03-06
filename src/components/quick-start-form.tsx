@@ -1,6 +1,6 @@
 ﻿import { Search, SlidersHorizontal } from "lucide-react";
 
-import type { Device, Merchant, Offer } from "@/lib/schema";
+import type { Condition, Device, Merchant, ValueType } from "@/lib/schema";
 
 type SortValue = "highest-value" | "easiest" | "best-upgrade" | "highest-confidence" | "newest";
 
@@ -20,9 +20,9 @@ export function QuickStartForm({
   defaultCurrentDevice: string;
   defaultTargetDevice?: string;
   defaultMerchant?: string;
-  defaultCondition?: string;
+  defaultCondition?: Condition;
   defaultSortBy?: SortValue;
-  defaultValueType?: Offer["valueType"] | "all";
+  defaultValueType?: ValueType | "all";
   mode?: "homepage" | "finder" | "upgrade";
 }) {
   const action = mode === "upgrade" ? "/upgrade" : "/search";
@@ -39,7 +39,7 @@ export function QuickStartForm({
         </div>
       </div>
       <p className="mt-4 text-sm leading-6 text-muted">
-        Compare simple trade-in credit, store value, and resale alternatives without carrier promo clutter.
+        Compare direct trade-in value, store credit, gift card paths, and resale estimates with freshness and confidence attached.
       </p>
       <form action={action} className="mt-6 space-y-4">
         <label className="block">
@@ -54,10 +54,9 @@ export function QuickStartForm({
           <label className="block">
             <span className="mb-2 block text-sm font-medium">Condition</span>
             <select name="condition" defaultValue={defaultCondition} className="surface-input w-full rounded-2xl px-4 py-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-accent">
-              <option value="mint">Mint</option>
               <option value="good">Good</option>
-              <option value="fair">Fair</option>
-              <option value="cracked">Cracked</option>
+              <option value="damaged">Damaged</option>
+              <option value="poor">Poor / not accepted</option>
             </select>
           </label>
           <label className="block">
@@ -116,3 +115,4 @@ export function QuickStartForm({
     </aside>
   );
 }
+

@@ -13,7 +13,7 @@ import { QuickStartForm } from "@/components/quick-start-form";
 import { SectionHeading } from "@/components/section-heading";
 import { StatCard } from "@/components/stat-card";
 import { buildHomepageSnapshot } from "@/lib/engine";
-import { formatCurrency, formatPercent, formatRelativeDate } from "@/lib/format";
+import { formatPercent, formatRelativeDate } from "@/lib/format";
 
 export default function HomePage() {
   const snapshot = buildHomepageSnapshot();
@@ -30,8 +30,8 @@ export default function HomePage() {
           <h1 className="mt-5 max-w-4xl text-balance text-4xl font-semibold tracking-[-0.05em] sm:text-5xl lg:text-6xl">Find the best real value for your phone.</h1>
           <p className="mt-4 max-w-3xl text-base leading-7 text-muted sm:text-lg sm:leading-8">Compare direct trade-in value, resale benchmarks, and simple upgrade paths in one clean view.</p>
           <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-            <StatCard label="Best trade-in" value={formatCurrency(snapshot.heroStats.bestDirectValue)} hint="Top store value" icon={CircleDollarSign} />
-            <StatCard label="Best resale" value={formatCurrency(snapshot.heroStats.bestResaleValue)} hint="Net after fees" icon={TrendingUp} />
+            <StatCard label="Best trade-in" value={snapshot.heroStats.bestDirectValue} hint="Top store value" icon={CircleDollarSign} />
+            <StatCard label="Best resale" value={snapshot.heroStats.bestResaleValue} hint="Net after fees" icon={TrendingUp} />
             <StatCard label="Coverage" value={String(snapshot.heroStats.deviceCoverage)} hint="Phones tracked" icon={Sparkles} />
             <StatCard label="Confidence" value={formatPercent(snapshot.heroStats.avgConfidence)} hint="Freshness weighted" icon={BellRing} />
           </div>
@@ -43,16 +43,16 @@ export default function HomePage() {
             <div>
               <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted">Trade in</p>
               <p className="mt-2 text-base font-semibold sm:text-lg">{snapshot.examplePath.merchant.name}</p>
-              <p className="mt-1 text-sm text-muted">{formatCurrency(snapshot.examplePath.netValue)}</p>
+              <p className="mt-1 text-sm text-muted">{snapshot.examplePath.resolvedValue.displayValue}</p>
             </div>
             <div>
               <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted">Sell</p>
-              <p className="mt-2 text-base font-semibold sm:text-lg">{formatCurrency(snapshot.examplePath.resaleNetValue ?? 0)}</p>
+              <p className="mt-2 text-base font-semibold sm:text-lg">{snapshot.heroStats.bestResaleValue}</p>
               <p className="mt-1 text-sm text-muted">Estimated net</p>
             </div>
             <div>
               <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted">Upgrade</p>
-              <p className="mt-2 text-base font-semibold sm:text-lg">{formatCurrency(snapshot.examplePath.effectiveUpgradeCost)}</p>
+              <p className="mt-2 text-base font-semibold sm:text-lg">{snapshot.examplePath.effectiveUpgradeCost ? `$${snapshot.examplePath.effectiveUpgradeCost}` : "No target"}</p>
               <p className="mt-1 text-sm text-muted">Estimated final cost</p>
             </div>
           </div>
@@ -96,7 +96,7 @@ export default function HomePage() {
                 <p className="font-mono text-xs uppercase tracking-[0.2em] text-accent">{option.label}</p>
                 <h3 className="mt-2 text-lg font-semibold">{option.title}</h3>
                 <p className="mt-1 text-sm text-muted">{option.subtitle}</p>
-                <p className="mt-4 text-2xl font-semibold tracking-tight">{formatCurrency(option.value)}</p>
+                <p className="mt-4 text-2xl font-semibold tracking-tight">{option.displayValue}</p>
                 <p className="mt-2 text-sm text-muted">{option.speed} · {option.effort}</p>
               </Link>
             ))}

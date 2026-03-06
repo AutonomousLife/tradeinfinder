@@ -36,18 +36,19 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ]),
     ...offers.map((offer) => ({
       url: absoluteUrl(`/offer/${offer.slug}`),
-      lastModified: new Date(),
+      lastModified: new Date(offer.retrievedAt),
       changeFrequency: "daily" as const,
       priority: 0.68,
     })),
-    ...offers.flatMap((offer) =>
-      offer.acceptedTradeInDevices.slice(0, 8).map((deviceSlug) => ({
-        url: absoluteUrl(`/trade-in/${deviceSlug}/${offer.storeId}`),
-        lastModified: new Date(),
+    ...offers.map((offer) => {
+      const device = devices.find((entry) => entry.id === offer.deviceId);
+      return {
+        url: absoluteUrl(`/trade-in/${device?.slug ?? "iphone-13-128"}/${offer.merchantId}`),
+        lastModified: new Date(offer.retrievedAt),
         changeFrequency: "daily" as const,
         priority: 0.66,
-      })),
-    ),
+      };
+    }),
     ...topUpgradeComparisons.map((comparison) => ({
       url: absoluteUrl(`/upgrade-path/${comparison.oldDeviceSlug}/${comparison.newDeviceSlug}`),
       lastModified: new Date(),
@@ -62,3 +63,4 @@ export default function sitemap(): MetadataRoute.Sitemap {
     })),
   ];
 }
+

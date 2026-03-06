@@ -1,4 +1,4 @@
-import { Metadata } from "next";
+﻿import { Metadata } from "next";
 
 import { AdminConsole } from "@/components/admin-console";
 import { PageShell } from "@/components/page-shell";
@@ -18,10 +18,11 @@ export default function AdminPage() {
     <PageShell className="gap-10 pb-24 pt-10">
       <SectionHeading
         eyebrow="Admin"
-        title="Operational tooling for offer quality and ingestion."
-        description="A production path would protect this surface with auth and roles. The UI here exposes the intended operational model."
+        title="Operational tooling for value quality and ingestion."
+        description="This surface is meant for operator review: raw snapshots, normalized values, override status, and confidence rationale."
       />
       <AdminConsole model={model} />
     </PageShell>
   );
 }
+

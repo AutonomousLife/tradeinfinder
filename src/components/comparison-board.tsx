@@ -24,10 +24,10 @@ export function ComparisonBoard({ scenarios }: { scenarios: UpgradeBoard[] }) {
                   <span className="rounded-full bg-accent-soft px-3 py-1 text-xs font-semibold text-accent">{path.reasonBadge}</span>
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <Metric label="Shown value" value={path.resolvedValue.displayValue} />
                   <Metric label="Upgrade cost" value={formatCurrency(path.effectiveUpgradeCost)} />
                   <Metric label="Confidence" value={formatPercent(path.confidence)} />
-                  <Metric label="Trade-in value" value={formatCurrency(path.netValue)} />
-                  <Metric label="Usability" value={path.valueTimelineLabel ?? "Immediate value"} />
+                  <Metric label="Checked" value={path.resolvedValue.freshnessLabel} />
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {path.tags.map((tag) => (
@@ -36,7 +36,7 @@ export function ComparisonBoard({ scenarios }: { scenarios: UpgradeBoard[] }) {
                 </div>
                 <div className="mt-4 rounded-[1.2rem] border border-line bg-surface/60 p-4">
                   <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted">Why this ranks here</p>
-                  <p className="mt-2 text-sm leading-6 text-foreground">{path.explanation}</p>
+                  <p className="mt-2 text-sm leading-6 text-foreground">{path.resolvedValue.whyValue}</p>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-3">
                   <Link href={`/offer/${path.offer.slug}`} className="rounded-full border border-line px-4 py-2 text-sm font-semibold transition hover:bg-surface">Offer detail</Link>
@@ -59,3 +59,4 @@ function Metric({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+

@@ -15,8 +15,9 @@ export default function DashboardPage() {
 
   return (
     <PageShell className="gap-10 pb-24 pt-10">
-      <SectionHeading eyebrow="Dashboard" title="A cleaner place for saved phones and alerts" description="This page is kept intentionally simple until sign-in and persistence are connected." />
+      <SectionHeading eyebrow="Dashboard" title="A cleaner place for saved phones and alerts" description="This page stays simple until sign-in and persistence are connected, but the alert model already assumes freshness and confidence-based updates." />
       <DashboardView model={model} />
     </PageShell>
   );
 }
+

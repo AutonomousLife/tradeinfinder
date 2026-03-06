@@ -5,7 +5,7 @@ import { PageShell } from "@/components/page-shell";
 import { QuickStartForm } from "@/components/quick-start-form";
 import { SectionHeading } from "@/components/section-heading";
 import { buildSellVsTradeModel } from "@/lib/engine";
-import { formatCurrency, formatPercent } from "@/lib/format";
+import { formatPercent } from "@/lib/format";
 import { devices, merchants } from "@/lib/seed-data";
 import { getSearchParam } from "@/lib/utils";
 
@@ -21,7 +21,7 @@ type SellVsTradePageProps = {
 export default async function SellVsTradePage({ searchParams }: SellVsTradePageProps) {
   const resolved = (await searchParams) ?? {};
   const deviceSlug = getSearchParam(resolved.currentDevice, "iphone-13-128") ?? "iphone-13-128";
-  const condition = (getSearchParam(resolved.condition, "good") ?? "good") as "mint" | "good" | "fair" | "cracked";
+  const condition = (getSearchParam(resolved.condition, "good") ?? "good") as "good" | "damaged" | "poor";
   const model = buildSellVsTradeModel(deviceSlug, condition);
   if (!model) return null;
 
@@ -40,7 +40,7 @@ export default async function SellVsTradePage({ searchParams }: SellVsTradePageP
           <ChartPanel title="Trade-in value vs resale net" description="Immediate store value next to likely sell-it-yourself net after fees." data={model.chart.map((item) => ({ label: item.label, instant: item.tradeIn, delayed: item.resale }))} />
           <div className="grid gap-4 lg:grid-cols-3">
             {model.options.map((option) => (
-              <div key={option.slug} className="card rounded-[1.5rem] p-5"><p className="font-mono text-xs uppercase tracking-[0.2em] text-accent">{option.label}</p><h3 className="mt-2 text-xl font-semibold">{option.title}</h3><p className="mt-1 text-sm text-muted">{option.subtitle}</p><p className="mt-4 text-3xl font-semibold">{formatCurrency(option.value)}</p><p className="mt-2 text-sm text-muted">{option.speed} · {option.effort} · {option.risk}</p><p className="mt-3 text-sm text-muted">Confidence {formatPercent(option.confidence)}</p></div>
+              <div key={option.slug} className="card rounded-[1.5rem] p-5"><p className="font-mono text-xs uppercase tracking-[0.2em] text-accent">{option.label}</p><h3 className="mt-2 text-xl font-semibold">{option.title}</h3><p className="mt-1 text-sm text-muted">{option.subtitle}</p><p className="mt-4 text-3xl font-semibold">{option.displayValue}</p><p className="mt-2 text-sm text-muted">{option.speed} · {option.effort} · {option.risk}</p><p className="mt-3 text-sm text-muted">{option.confidenceLabel} · {formatPercent(option.confidence)}</p><p className="mt-1 text-xs text-muted">{option.freshnessLabel}</p></div>
             ))}
           </div>
         </div>
@@ -48,3 +48,4 @@ export default async function SellVsTradePage({ searchParams }: SellVsTradePageP
     </PageShell>
   );
 }
+

@@ -2,6 +2,7 @@
   acquisitionSources,
   alertSubscriptions,
   devices,
+  manualOverrides,
   merchants,
   offers,
   rawIngestRecords,
@@ -10,6 +11,7 @@
   topUpgradeComparisons,
   watchedItems,
 } from "@/lib/seed-data";
+import { buildResolvedValue, fallbackLabel } from "@/lib/accuracy";
 import { formatCurrency } from "@/lib/format";
 import { buildPathLinks } from "@/lib/links";
 import type {
@@ -22,17 +24,20 @@ import type {
   DealsHubModel,
   Device,
   DevicePageModel,
+  FallbackLevel,
   HomepageSnapshot,
   MerchantPageModel,
   MethodologyModel,
-  Offer,
   OfferPageModel,
   RankedPath,
+  ResolvedValue,
   SellVsTradeModel,
   SellVsTradeOption,
   Store,
   TradeInFinderModel,
   UpgradeBoard,
+  ValueRecord,
+  ValueType,
 } from "@/lib/schema";
 
 type PathSort = "highest-value" | "easiest" | "best-upgrade" | "highest-confidence" | "newest";
@@ -42,7 +47,7 @@ type FinderArgs = {
   targetDeviceSlug?: string;
   condition: Condition;
   merchantSlug?: string;
-  valueType?: Offer["valueType"] | "all";
+  valueType?: ValueType | "all";
   sortBy?: PathSort;
 };
 
@@ -54,244 +59,437 @@ type UpgradeArgs = {
   sortBy?: PathSort;
 };
 
-const confidenceLabels = [
-  { threshold: 0.9, label: "Very high" },
-  { threshold: 0.8, label: "High" },
-  { threshold: 0.68, label: "Moderate" },
-  { threshold: 0, label: "Limited" },
-];
+type ResolvedRecord = {
+  record: ValueRecord;
+  fallbackLevel: FallbackLevel;
+  whyValue: string;
+  rationale: ResolvedValue["confidenceRationale"];
+};
+
+const CURRENT_YEAR = 2026;
+const EXACT_FALLBACK_LEVEL: Record<ValueRecord["verificationStatus"], FallbackLevel> = {
+  verified: "exact_verified",
+  manual: "exact_verified",
+  estimated: "exact_estimated",
+  stale: "exact_estimated",
+  low_confidence: "exact_estimated",
+};
+
+const devicesBySlug = new Map(devices.map((device) => [device.slug, device]));
+const devicesById = new Map(devices.map((device) => [device.id, device]));
+const merchantsBySlug = new Map(merchants.map((merchant) => [merchant.slug, merchant]));
+const merchantsById = new Map(merchants.map((merchant) => [merchant.id, merchant]));
+const rawIngestById = new Map(rawIngestRecords.map((record) => [record.id, record]));
 
 function getDevice(slug?: string) {
-  return devices.find((device) => device.slug === slug);
+  return slug ? devicesBySlug.get(slug) : undefined;
 }
 
 function getStore(slug?: string) {
-  return merchants.find((merchant) => merchant.slug === slug);
+  return slug ? merchantsBySlug.get(slug) : undefined;
 }
 
 function storeById(id: string) {
-  return merchants.find((merchant) => merchant.id === id);
+  return merchantsById.get(id);
 }
 
-function resaleForDevice(deviceId: string, condition: Condition) {
-  return resaleEstimates
-    .filter((estimate) => estimate.deviceId === deviceId && estimate.condition === condition)
-    .sort((a, b) => b.netEstimatedValue - a.netEstimatedValue)[0] ?? null;
+function deviceById(id: string) {
+  return devicesById.get(id);
 }
 
-function conditionFactor(condition: Condition) {
-  if (condition === "mint") return 1;
-  if (condition === "good") return 0.93;
-  if (condition === "fair") return 0.79;
-  return 0.54;
+function formatValueType(valueType: ValueType) {
+  if (valueType === "instant_credit") return "Instant credit";
+  if (valueType === "gift_card") return "Gift card";
+  if (valueType === "store_credit") return "Store credit";
+  if (valueType === "purchase_credit") return "Purchase credit";
+  return "Resale estimate";
 }
 
-function ageFactor(year: number) {
-  const age = Math.max(2026 - year, 1);
-  return Math.max(0.2, 0.82 - age * 0.08);
+function conditionLabel(condition: Condition) {
+  if (condition === "good") return "Good";
+  if (condition === "damaged") return "Damaged";
+  return "Poor / not accepted";
 }
 
-function brandBoost(device: Device, store: Store) {
-  if (store.slug === "best-buy") return 1;
-  if (store.slug === "amazon") return 0.92;
-  if (store.slug === "ebay") return 0.9;
-  if (store.slug === "apple") return device.brand === "Apple" ? 1.04 : 0.72;
-  if (store.slug === "samsung") return device.brand === "Samsung" ? 1.05 : 0.78;
-  if (store.slug === "google-store") return device.brand === "Google" ? 1.05 : 0.74;
-  return 1;
+function familyKey(device: Device) {
+  return `${device.brand}:${device.model.replace(/\s+\d+GB$/i, "").toLowerCase()}`;
 }
 
-function valueUsability(type: Offer["valueType"]) {
-  if (type === "instant_credit") return 1;
-  if (type === "purchase_credit") return 0.98;
-  if (type === "store_credit") return 0.95;
-  return 0.9;
+function valueTypeUsability(valueType: ValueType) {
+  if (valueType === "instant_credit") return 1;
+  if (valueType === "purchase_credit") return 0.98;
+  if (valueType === "store_credit") return 0.93;
+  if (valueType === "gift_card") return 0.9;
+  return 0.86;
 }
 
-function effortLabel(type: Offer["valueType"]): RankedPath["effortLabel"] {
-  if (type === "instant_credit" || type === "purchase_credit") return "easy";
-  if (type === "store_credit") return "moderate";
+function valueTypePenalty(valueType: ValueType) {
+  if (valueType === "instant_credit") return 0;
+  if (valueType === "purchase_credit") return 6;
+  if (valueType === "store_credit") return 12;
+  if (valueType === "gift_card") return 18;
+  return 24;
+}
+
+function effortLabel(valueType: ValueType, acquisition: AcquisitionSource | null): RankedPath["effortLabel"] {
+  if (acquisition) return "higher effort";
+  if (valueType === "instant_credit" || valueType === "purchase_credit") return "easy";
   return "moderate";
 }
 
-function biggestCaveat(type: Offer["valueType"]) {
-  if (type === "gift_card") return "Value is trapped in store balance, not cash.";
-  if (type === "store_credit") return "Value works best if the store sells your next phone competitively.";
-  if (type === "purchase_credit") return "Highest value usually assumes you are buying your next phone right away.";
-  return "Final value still depends on inspection matching the selected condition.";
-}
-
-function targetCompatible(store: Store, targetDevice?: Device) {
-  if (!targetDevice) return true;
-  if (store.slug === "apple") return targetDevice.brand === "Apple";
-  if (store.slug === "samsung") return targetDevice.brand === "Samsung";
-  if (store.slug === "google-store") return targetDevice.brand === "Google";
-  return ["best-buy", "amazon"].includes(store.slug);
-}
-
-function tradeInValueFor(device: Device, offer: Offer, store: Store, condition: Condition) {
-  const modeled = Math.round(device.msrp * ageFactor(device.year) * conditionFactor(condition) * brandBoost(device, store));
-  return Math.max(0, Math.min(offer.tradeInValue, modeled));
-}
-
-function confidenceFor(offer: Offer, store: Store, resaleNet: number, tradeValue: number) {
-  const deltaPenalty = Math.min(Math.abs(resaleNet - tradeValue) / 500, 0.16);
-  return Math.max(0.48, offer.confidenceScore * store.trustScore - deltaPenalty);
-}
-
-function riskLevel(confidence: number, offer: Offer): RankedPath["riskLevel"] {
-  if (confidence >= 0.86 && offer.valueType !== "gift_card") return "low";
-  if (confidence >= 0.72) return "medium";
+function riskLevel(confidence: number, resolved: ResolvedValue, acquisition: AcquisitionSource | null): RankedPath["riskLevel"] {
+  if (!resolved.stale && confidence >= 0.86 && !acquisition) return "low";
+  if (confidence >= 0.68) return "medium";
   return "high";
 }
 
-function pathScore(path: RankedPath, sortBy: PathSort = "highest-value") {
-  if (sortBy === "easiest") return path.instantValue + path.confidence * 100 - (path.effortLabel === "easy" ? 0 : 18);
-  if (sortBy === "best-upgrade") return 1000 - path.effectiveUpgradeCost + path.confidence * 100;
-  if (sortBy === "highest-confidence") return path.confidence * 100;
-  if (sortBy === "newest") return new Date(path.offer.lastVerifiedAt).getTime();
-  return path.trustAdjustedScore;
+function biggestCaveat(resolved: ResolvedValue, record: ValueRecord) {
+  if (resolved.stale) return "Stale value. Verify with the store before acting.";
+  if (resolved.fallbackLevel === "family_estimate") return "This is a family-level estimate, not an exact device match.";
+  if (resolved.fallbackLevel === "storage_adjusted") return "Value was adjusted from a different storage tier of the same phone.";
+  if (record.valueType === "gift_card") return "Value is paid as store balance, not cash.";
+  if (record.valueType === "store_credit") return "Value only helps if this store is still the best place to buy next.";
+  if (record.valueType === "purchase_credit") return "Credit usually applies only when you buy a phone in the same checkout flow.";
+  return "Final inspection can still change the store's payout if condition does not match.";
 }
 
-function pathTags(offer: Offer) {
+function targetCompatible(store: Store, targetDevice?: Device, record?: ValueRecord) {
+  if (!targetDevice) return true;
+  if (record?.targetDeviceSlug) return record.targetDeviceSlug === targetDevice.slug;
+  if (store.slug === "apple") return targetDevice.brand === "Apple";
+  if (store.slug === "samsung") return targetDevice.brand === "Samsung";
+  if (store.slug === "google-store") return targetDevice.brand === "Google";
+  return ["best-buy", "amazon", "ebay"].includes(store.slug);
+}
+
+function resolveValueRecord(args: {
+  device: Device;
+  merchant: Store;
+  condition: Condition;
+  valueType?: ValueType | "all";
+}): ResolvedRecord | null {
+  const base = offers.filter((record) => {
+    if (!record.active) return false;
+    if (record.merchantId !== args.merchant.id) return false;
+    if (args.valueType && args.valueType !== "all" && record.valueType !== args.valueType) return false;
+    return record.condition === args.condition;
+  });
+
+  const exact = base
+    .filter((record) => record.deviceId === args.device.id)
+    .sort((a, b) => b.confidenceScore - a.confidenceScore || new Date(b.retrievedAt).getTime() - new Date(a.retrievedAt).getTime())[0];
+  if (exact) {
+    return {
+      record: exact,
+      fallbackLevel: EXACT_FALLBACK_LEVEL[exact.verificationStatus],
+      whyValue: `Exact ${args.device.model} ${exact.storageVariant} match from ${exact.sourceName}.`,
+      rationale: [
+        { label: "Match", impact: "Exact device, storage, and condition match." },
+        { label: "Source", impact: `Pulled from ${exact.sourceName}.` },
+        { label: "Status", impact: `Marked ${exact.verificationStatus.replace(/_/g, " ")}.` },
+      ],
+    };
+  }
+
+  const sameModel = base
+    .filter((record) => {
+      const candidate = deviceById(record.deviceId);
+      return candidate ? candidate.brand === args.device.brand && candidate.model === args.device.model : false;
+    })
+    .sort((a, b) => b.confidenceScore - a.confidenceScore || new Date(b.retrievedAt).getTime() - new Date(a.retrievedAt).getTime())[0];
+  if (sameModel) {
+    const candidateDevice = deviceById(sameModel.deviceId)!;
+    const sourceMsrp = candidateDevice.msrp || args.device.msrp;
+    const adjustedAmount = Math.max(0, Math.round(sameModel.valueAmount * (args.device.msrp / sourceMsrp)));
+    const adjusted: ValueRecord = {
+      ...sameModel,
+      id: `${sameModel.id}-storage-adjusted-${args.device.id}`,
+      slug: `${sameModel.slug}-storage-adjusted-${args.device.slug}`,
+      deviceId: args.device.id,
+      storageVariant: args.device.storageVariants[0] ?? sameModel.storageVariant,
+      valueAmount: adjustedAmount,
+      exactStorageMatch: false,
+      confidenceScore: Math.max(0.4, Number((sameModel.confidenceScore - 0.08).toFixed(2))),
+      notes: `${sameModel.notes} Adjusted from ${candidateDevice.model} ${sameModel.storageVariant} to ${args.device.storageVariants[0] ?? "selected storage"}.`,
+    };
+    return {
+      record: adjusted,
+      fallbackLevel: "storage_adjusted",
+      whyValue: `Adjusted from ${candidateDevice.model} ${sameModel.storageVariant} because an exact storage match was unavailable.`,
+      rationale: [
+        { label: "Fallback", impact: "Same phone model, different storage tier." },
+        { label: "Adjustment", impact: "Scaled using MSRP difference between storage tiers." },
+        { label: "Confidence", impact: "Lowered because exact storage was unavailable." },
+      ],
+    };
+  }
+
+  const family = base
+    .filter((record) => {
+      const candidate = deviceById(record.deviceId);
+      return candidate
+        ? (candidate.brand === args.device.brand && familyKey(candidate) === familyKey(args.device)) ||
+            (candidate.brand === args.device.brand && Math.abs(candidate.year - args.device.year) <= 1)
+        : false;
+    })
+    .sort((a, b) => b.confidenceScore - a.confidenceScore || new Date(b.retrievedAt).getTime() - new Date(a.retrievedAt).getTime())[0];
+  if (family) {
+    const candidateDevice = deviceById(family.deviceId)!;
+    const yearPenalty = Math.max(-0.18, Math.min(0.18, (args.device.year - candidateDevice.year) * 0.06));
+    const adjustedAmount = Math.max(0, Math.round(family.valueAmount * (1 + yearPenalty)));
+    const inferred: ValueRecord = {
+      ...family,
+      id: `${family.id}-family-estimate-${args.device.id}`,
+      slug: `${family.slug}-family-estimate-${args.device.slug}`,
+      deviceId: args.device.id,
+      storageVariant: args.device.storageVariants[0] ?? family.storageVariant,
+      valueAmount: adjustedAmount,
+      exactStorageMatch: false,
+      confidenceScore: Math.max(0.35, Number((family.confidenceScore - 0.18).toFixed(2))),
+      verificationStatus: "low_confidence",
+      notes: `${family.notes} Estimated from ${candidateDevice.brand} ${candidateDevice.model}.`,
+    };
+    return {
+      record: inferred,
+      fallbackLevel: "family_estimate",
+      whyValue: `Estimated from similar ${candidateDevice.brand} family data because no exact listing was available.`,
+      rationale: [
+        { label: "Fallback", impact: "Closest family-level match in the same brand." },
+        { label: "Adjustment", impact: "Shifted for model year difference." },
+        { label: "Confidence", impact: "Shown as a range instead of an exact amount." },
+      ],
+    };
+  }
+
+  return null;
+}
+
+function resaleForDevice(device: Device, condition: Condition) {
+  return resaleEstimates
+    .filter((estimate) => estimate.deviceId === device.id && estimate.condition === condition && estimate.active)
+    .sort((a, b) => b.confidenceScore - a.confidenceScore || b.valueAmount - a.valueAmount)[0] ?? null;
+}
+
+function adjustedConfidence(record: ValueRecord, merchant: Store, resolved: ResolvedValue) {
+  const freshnessPenalty = resolved.stale ? 0.16 : 0;
+  const fallbackPenalty = resolved.fallbackLevel === "storage_adjusted" ? 0.08 : resolved.fallbackLevel === "family_estimate" ? 0.18 : 0;
+  const giftPenalty = record.valueType === "gift_card" ? 0.02 : 0;
+  const score = record.confidenceScore * 0.62 + merchant.trustScore * 0.3 - freshnessPenalty - fallbackPenalty - giftPenalty;
+  return Math.max(0.22, Number(score.toFixed(2)));
+}
+
+function computePathScore(path: RankedPath, sortBy: PathSort = "highest-value") {
+  const freshnessBoost = path.resolvedValue.stale ? -32 : 18;
+  const matchBoost = path.resolvedValue.fallbackLevel === "exact_verified" ? 26 : path.resolvedValue.fallbackLevel === "exact_estimated" ? 14 : path.resolvedValue.fallbackLevel === "storage_adjusted" ? 0 : -26;
+  const base = path.netValue * 0.52 + path.instantValue * 0.18 + path.confidence * 100 * 0.2 + path.merchant.trustScore * 100 * 0.1 + freshnessBoost + matchBoost;
+
+  if (sortBy === "easiest") return base + (path.effortLabel === "easy" ? 28 : path.effortLabel === "moderate" ? 10 : -18) - valueTypePenalty(path.offer.valueType);
+  if (sortBy === "best-upgrade") return base + (1000 - path.effectiveUpgradeCost);
+  if (sortBy === "highest-confidence") return path.confidence * 100 + (path.resolvedValue.stale ? -20 : 10);
+  if (sortBy === "newest") return new Date(path.offer.retrievedAt).getTime();
+  return base;
+}
+
+function pathTags(path: RankedPath) {
   return [
-    offer.valueType === "instant_credit"
-      ? "Instant credit"
-      : offer.valueType === "store_credit"
-        ? "Store credit"
-        : offer.valueType === "gift_card"
-          ? "Gift card"
-          : "Purchase credit",
-    offer.sourceType === "verified" ? "Verified recently" : offer.sourceType === "estimated" ? "Estimated" : "Manual",
+    formatValueType(path.offer.valueType),
+    path.resolvedValue.confidenceLabel,
+    path.resolvedValue.freshnessLabel,
+    fallbackLabel(path.resolvedValue.fallbackLevel),
   ];
 }
 
-function createPath(device: Device, offer: Offer, condition: Condition, targetDevice?: Device, acquisition: AcquisitionSource | null = null): RankedPath | null {
-  const store = storeById(offer.storeId);
-  if (!store) return null;
-  if (!offer.acceptedTradeInDevices.includes(device.slug)) return null;
-  if (!offer.acceptedConditions.includes(condition)) return null;
-  if (!targetCompatible(store, targetDevice)) return null;
+function createPath(args: {
+  device: Device;
+  record: ValueRecord;
+  resolvedValue: ResolvedValue;
+  targetDevice?: Device;
+  acquisition?: AcquisitionSource | null;
+}): RankedPath | null {
+  const merchant = storeById(args.record.merchantId);
+  if (!merchant) return null;
+  if (!targetCompatible(merchant, args.targetDevice, args.record)) return null;
 
-  const resale = resaleForDevice(device.id, condition);
-  const netTradeValue = tradeInValueFor(device, offer, store, condition) - (acquisition?.estimatedPrice ?? 0);
-  if (netTradeValue <= 0) return null;
+  const resale = resaleForDevice(args.device, args.record.condition);
+  const acquisition = args.acquisition ?? null;
+  const gross = args.record.valueAmount;
+  const instantValue = Math.max(0, Math.round(gross * valueTypeUsability(args.record.valueType)));
+  const netValue = Math.max(0, gross - (acquisition?.estimatedPrice ?? 0));
+  const effectiveUpgradeCost = args.targetDevice ? Math.max(args.targetDevice.msrp - instantValue, 0) : 0;
+  const confidence = adjustedConfidence(args.record, merchant, args.resolvedValue);
+  const effort = effortLabel(args.record.valueType, acquisition);
 
-  const confidence = confidenceFor(offer, store, resale?.netEstimatedValue ?? netTradeValue, netTradeValue);
-  const instantValue = Math.round(netTradeValue * valueUsability(offer.valueType));
-  const effectiveUpgradeCost = targetDevice ? Math.max(targetDevice.msrp - instantValue, 0) : 0;
-  const trustAdjustedScore = netTradeValue * 0.58 + instantValue * 0.18 + confidence * 100 * 0.16 + store.trustScore * 100 * 0.08;
-  const resaleDelta = resale ? netTradeValue - resale.netEstimatedValue : undefined;
-
-  return {
-    slug: acquisition ? `${device.slug}-${offer.slug}-acq` : `${device.slug}-${offer.slug}`,
-    label: `${store.name} ${targetDevice ? `for ${targetDevice.model}` : "trade-in"}`,
-    summary: targetDevice
-      ? `${formatCurrency(netTradeValue)} off ${targetDevice.model} with a clear checkout credit.`
-      : `${formatCurrency(netTradeValue)} direct value with no carrier lock-in math.`,
-    reasonBadge: targetDevice
-      ? store.slug === targetDevice.preferredStoreSlugs[0]
-        ? `Best for ${targetDevice.brand} upgrade`
-        : "Best upgrade path"
-      : offer.valueType === "instant_credit"
+  const path: RankedPath = {
+    slug: acquisition ? `${args.device.slug}-${args.record.slug}-${acquisition.id}` : `${args.device.slug}-${args.record.slug}`,
+    label: `${merchant.name} ${formatValueType(args.record.valueType).toLowerCase()}`,
+    summary: args.targetDevice
+      ? `${args.resolvedValue.displayValue} at ${merchant.name} brings ${args.targetDevice.model} to about ${formatCurrency(effectiveUpgradeCost)}.`
+      : `${args.resolvedValue.displayValue} from ${merchant.name} with ${args.resolvedValue.confidenceLabel.toLowerCase()} support.`,
+    reasonBadge: args.resolvedValue.fallbackLevel === "exact_verified"
+      ? "Best verified value"
+      : args.record.valueType === "instant_credit"
         ? "Best instant value"
-        : offer.valueType === "gift_card"
-          ? "Store-balance option"
+        : args.record.valueType === "purchase_credit"
+          ? "Best upgrade path"
           : "Best direct trade-in",
-    device,
-    merchant: store,
-    offer,
+    device: args.device,
+    merchant,
+    offer: args.record,
     acquisition,
-    netValue: netTradeValue,
+    resolvedValue: args.resolvedValue,
+    netValue,
     effectiveUpgradeCost,
     instantValue,
     confidence,
-    trustAdjustedScore,
-    biggestCaveat: biggestCaveat(offer.valueType),
-    explanation: `We model each store's direct value ceiling, adjust it for ${condition} condition, and compare it with likely resale net value and store trust so the top result stays practical.`,
-    tags: pathTags(offer),
-    riskLevel: riskLevel(confidence, offer),
-    valueTimelineLabel: offer.valueType === "gift_card" ? "Store-balance value" : "Immediate checkout value",
-    resaleNetValue: resale?.netEstimatedValue,
-    resaleDelta,
-    effortLabel: effortLabel(offer.valueType),
-    links: buildPathLinks({ acquisition, merchant: store, targetDeviceSlug: targetDevice?.slug ?? offer.targetDeviceOptional ?? device.slug }),
+    trustAdjustedScore: 0,
+    biggestCaveat: biggestCaveat(args.resolvedValue, args.record),
+    explanation: `${args.resolvedValue.whyValue} ${args.resolvedValue.stale ? "The record is stale and was deprioritized." : "Freshness and merchant trust improved its rank."}`,
+    tags: [],
+    riskLevel: riskLevel(confidence, args.resolvedValue, acquisition),
+    valueTimelineLabel: args.record.valueType === "gift_card" ? "Gift card after acceptance" : args.record.valueType === "store_credit" ? "Store credit" : "Immediate usable value",
+    resaleNetValue: resale?.valueAmount,
+    resaleDelta: resale ? netValue - resale.valueAmount : undefined,
+    effortLabel: effort,
+    links: buildPathLinks({ acquisition, merchant, targetDeviceSlug: args.targetDevice?.slug ?? args.record.targetDeviceSlug ?? args.device.slug }),
   };
+
+  path.tags = pathTags(path);
+  path.trustAdjustedScore = computePathScore(path);
+  return path;
 }
 
 function sortPaths(paths: RankedPath[], sortBy?: PathSort) {
-  return [...paths].sort((a, b) => pathScore(b, sortBy) - pathScore(a, sortBy));
+  return [...paths].sort((a, b) => computePathScore(b, sortBy) - computePathScore(a, sortBy));
 }
 
-function filteredOffers(device: Device, condition: Condition, merchantSlug?: string, valueType?: Offer["valueType"] | "all") {
-  return offers.filter((offer) => {
-    const store = storeById(offer.storeId);
-    if (!store) return false;
-    if (merchantSlug && store.slug !== merchantSlug) return false;
-    if (valueType && valueType !== "all" && offer.valueType !== valueType) return false;
-    return offer.acceptedTradeInDevices.includes(device.slug) && offer.acceptedConditions.includes(condition);
-  });
+function candidatePaths(device: Device, condition: Condition, targetDevice?: Device, merchantSlug?: string, valueType?: ValueType | "all") {
+  return merchants
+    .filter((merchant) => !merchantSlug || merchant.slug === merchantSlug)
+    .map((merchant) => {
+      const resolved = resolveValueRecord({ device, merchant, condition, valueType });
+      if (!resolved) return null;
+      const resolvedValue = buildResolvedValue(resolved.record, resolved.fallbackLevel, resolved.whyValue, resolved.rationale);
+      return createPath({ device, record: resolved.record, resolvedValue, targetDevice });
+    })
+    .filter((path): path is RankedPath => Boolean(path));
 }
 
 function sellVsTradeOptions(device: Device, condition: Condition, targetDevice?: Device): SellVsTradeOption[] {
-  const tradePaths = sortPaths(filteredOffers(device, condition).map((offer) => createPath(device, offer, condition, targetDevice)).filter(Boolean) as RankedPath[]);
-  const resale = resaleForDevice(device.id, condition);
-  const bestTrade = tradePaths[0];
-  const bestUpgrade = targetDevice ? buildUpgradeOptimizer({ currentDeviceSlug: device.slug, targetDeviceSlug: targetDevice.slug, condition }).boards[0]?.paths[0] : undefined;
+  const tradePaths = sortPaths(candidatePaths(device, condition, targetDevice)).slice(0, 3);
+  const resale = resaleForDevice(device, condition);
   const options: SellVsTradeOption[] = [];
-  if (bestTrade) {
-    options.push({ slug: `${device.slug}-trade`, type: "trade_in", title: `Trade in at ${bestTrade.merchant.name}`, subtitle: `${bestTrade.offer.valueType.replace("_", " ")} path`, value: bestTrade.netValue, confidence: bestTrade.confidence, speed: "Fast", effort: bestTrade.effortLabel === "easy" ? "Low effort" : "Medium effort", risk: bestTrade.riskLevel === "low" ? "Low risk" : "Moderate risk", caveat: bestTrade.biggestCaveat, label: "Best direct trade-in", href: `/trade-in/${device.slug}/${bestTrade.merchant.slug}` });
+
+  if (tradePaths[0]) {
+    options.push({
+      slug: `${device.slug}-trade`,
+      type: "trade_in",
+      title: `Trade in at ${tradePaths[0].merchant.name}`,
+      subtitle: `${tradePaths[0].resolvedValue.displayValue} ${formatValueType(tradePaths[0].offer.valueType).toLowerCase()}`,
+      value: tradePaths[0].netValue,
+      displayValue: tradePaths[0].resolvedValue.displayValue,
+      confidence: tradePaths[0].confidence,
+      confidenceLabel: tradePaths[0].resolvedValue.confidenceLabel,
+      speed: "Fast",
+      effort: tradePaths[0].effortLabel === "easy" ? "Low effort" : "Medium effort",
+      risk: tradePaths[0].riskLevel === "low" ? "Low risk" : "Moderate risk",
+      caveat: tradePaths[0].biggestCaveat,
+      label: "Best direct trade-in",
+      href: `/trade-in/${device.slug}/${tradePaths[0].merchant.slug}`,
+      freshnessLabel: tradePaths[0].resolvedValue.freshnessLabel,
+    });
   }
+
   if (resale) {
-    options.push({ slug: `${device.slug}-resale`, type: "resale", title: "Sell it yourself", subtitle: `Estimated ${formatCurrency(resale.estimatedSalePrice)} sale price before fees`, value: resale.netEstimatedValue, confidence: resale.confidenceScore, speed: "Slower", effort: "Higher effort", risk: "More variance", caveat: "You handle listing, fees, shipping, and buyer issues.", label: "Best resale alternative", href: `/resale-vs-trade/${device.slug}` });
+    const resolved = buildResolvedValue(
+      resale,
+      resale.verificationStatus === "verified" || resale.verificationStatus === "manual" ? "exact_verified" : "exact_estimated",
+      `Exact ${device.model} resale estimate from ${resale.sourceName}.`,
+      [
+        { label: "Source", impact: `Benchmarked from ${resale.sourceName}.` },
+        { label: "Net value", impact: "Fees are already deducted from the estimate." },
+      ],
+    );
+    options.push({
+      slug: `${device.slug}-resale`,
+      type: "resale",
+      title: "Sell it yourself",
+      subtitle: `${resolved.displayValue} estimated net after fees`,
+      value: resale.valueAmount,
+      displayValue: resolved.displayValue,
+      confidence: resale.confidenceScore,
+      confidenceLabel: resolved.confidenceLabel,
+      speed: "Slower",
+      effort: "Higher effort",
+      risk: "More variance",
+      caveat: "Listing quality, fees, and timing can move real resale results.",
+      label: "Best resale alternative",
+      href: `/resale-vs-trade/${device.slug}`,
+      freshnessLabel: resolved.freshnessLabel,
+    });
   }
-  if (bestUpgrade && targetDevice) {
-    options.push({ slug: `${device.slug}-upgrade`, type: "upgrade", title: `Upgrade to ${targetDevice.model}`, subtitle: `Best path is ${bestUpgrade.merchant.name}`, value: bestUpgrade.netValue, confidence: bestUpgrade.confidence, speed: "Fast", effort: bestUpgrade.effortLabel === "easy" ? "Low effort" : "Medium effort", risk: bestUpgrade.riskLevel === "low" ? "Low risk" : "Moderate risk", caveat: bestUpgrade.biggestCaveat, label: "Best upgrade path", href: `/upgrade-path/${device.slug}/${targetDevice.slug}` });
+
+  if (targetDevice) {
+    const bestUpgrade = sortPaths(candidatePaths(device, condition, targetDevice), "best-upgrade")[0];
+    if (bestUpgrade) {
+      options.push({
+        slug: `${device.slug}-upgrade`,
+        type: "upgrade",
+        title: `Upgrade at ${bestUpgrade.merchant.name}`,
+        subtitle: `${targetDevice.model} for about ${formatCurrency(bestUpgrade.effectiveUpgradeCost)}`,
+        value: bestUpgrade.netValue,
+        displayValue: bestUpgrade.resolvedValue.displayValue,
+        confidence: bestUpgrade.confidence,
+        confidenceLabel: bestUpgrade.resolvedValue.confidenceLabel,
+        speed: "Fast",
+        effort: bestUpgrade.effortLabel === "easy" ? "Low effort" : "Medium effort",
+        risk: bestUpgrade.riskLevel === "low" ? "Low risk" : "Moderate risk",
+        caveat: bestUpgrade.biggestCaveat,
+        label: "Best upgrade path",
+        href: `/upgrade-path/${device.slug}/${targetDevice.slug}`,
+        freshnessLabel: bestUpgrade.resolvedValue.freshnessLabel,
+      });
+    }
   }
+
   return options.sort((a, b) => b.value - a.value);
 }
 
 export function hasDeviceSlug(slug: string) {
-  return devices.some((device) => device.slug === slug);
+  return devicesBySlug.has(slug);
 }
 
 export function hasMerchantSlug(slug: string) {
-  return merchants.some((merchant) => merchant.slug === slug);
+  return merchantsBySlug.has(slug);
 }
+
 export function buildTradeInFinder(args: FinderArgs): TradeInFinderModel {
   const currentDevice = getDevice(args.currentDeviceSlug) ?? devices[0];
   const targetDevice = getDevice(args.targetDeviceSlug);
   const merchant = getStore(args.merchantSlug);
-  const paths = sortPaths(
-    filteredOffers(currentDevice, args.condition, args.merchantSlug, args.valueType)
-      .map((offer) => createPath(currentDevice, offer, args.condition, targetDevice))
-      .filter(Boolean) as RankedPath[],
-    args.sortBy,
-  );
-  const resale = resaleForDevice(currentDevice.id, args.condition);
+  const paths = sortPaths(candidatePaths(currentDevice, args.condition, targetDevice, args.merchantSlug, args.valueType), args.sortBy);
+  const resale = resaleForDevice(currentDevice, args.condition);
   const top = paths[0];
-  const sellVsTrade = sellVsTradeOptions(currentDevice, args.condition, targetDevice);
 
   return {
     inputs: { currentDevice, targetDevice, merchant, condition: args.condition },
     summary: {
-      bestTradeInValue: top?.netValue ?? 0,
-      bestTradeInLabel: top ? `${top.merchant.name} ${top.offer.valueType.replace("_", " ")}` : "No matching store",
-      bestResaleValue: resale?.netEstimatedValue ?? 0,
-      bestResaleLabel: resale ? `${resale.sourceType} net estimate` : "No resale estimate",
-      bestUpgradeValue: targetDevice ? Math.max(targetDevice.msrp - (top?.instantValue ?? 0), 0) : 0,
-      bestUpgradeLabel: targetDevice && top ? `${top.merchant.name} lowers ${targetDevice.model} to ${formatCurrency(Math.max(targetDevice.msrp - top.instantValue, 0))}` : "Choose a target phone for upgrade math",
+      bestTradeInValue: top?.resolvedValue.displayValue ?? "Unavailable",
+      bestTradeInLabel: top ? `${top.merchant.name} ${formatValueType(top.offer.valueType).toLowerCase()}` : "No exact or estimated store value",
+      bestResaleValue: resale ? buildResolvedValue(resale, resale.verificationStatus === "verified" || resale.verificationStatus === "manual" ? "exact_verified" : "exact_estimated", `Exact ${currentDevice.model} resale estimate.`, [{ label: "Source", impact: `Based on ${resale.sourceName}.` }]).displayValue : "Unavailable",
+      bestResaleLabel: resale ? `${resale.sourceName} net estimate` : "No resale estimate",
+      bestUpgradeValue: targetDevice && top ? formatCurrency(top.effectiveUpgradeCost) : "Choose a target phone",
+      bestUpgradeLabel: targetDevice && top ? `${top.merchant.name} keeps the upgrade simple` : "Add a target phone for upgrade math",
       avgConfidence: paths.length ? paths.reduce((sum, path) => sum + path.confidence, 0) / paths.length : 0,
     },
     whyTopResult: top
       ? [
-          { label: "Immediate value", copy: `${top.merchant.name} delivers ${formatCurrency(top.instantValue)} in immediately usable value.` },
-          { label: "Resale gap", copy: top.resaleNetValue ? `Estimated resale net is ${formatCurrency(top.resaleNetValue)} for the same phone and condition.` : "Resale benchmark is unavailable for this condition." },
-          { label: "Confidence", copy: `${confidenceLabels.find((item) => top.confidence >= item.threshold)?.label ?? "Moderate"} confidence based on freshness, store trust, and comp alignment.` },
+          { label: "Why this value", copy: top.resolvedValue.whyValue },
+          { label: "Source and freshness", copy: `${top.offer.sourceName}. ${top.resolvedValue.freshnessLabel}.` },
+          { label: "Confidence", copy: `${top.resolvedValue.confidenceLabel}. ${top.resolvedValue.confidenceRationale.map((item) => `${item.label}: ${item.impact}`).join(" ")}` },
         ]
       : [],
     paths,
-    sellVsTrade,
+    sellVsTrade: sellVsTradeOptions(currentDevice, args.condition, targetDevice),
     chart: paths.slice(0, 5).map((path) => ({ label: path.merchant.name, instant: path.instantValue, delayed: path.resaleNetValue ?? 0 })),
   };
 }
@@ -300,21 +498,31 @@ export function buildUpgradeOptimizer(args: UpgradeArgs) {
   const currentDevice = getDevice(args.currentDeviceSlug) ?? devices[0];
   const targetDevice = getDevice(args.targetDeviceSlug) ?? devices[0];
   const merchant = getStore(args.merchantSlug);
-  const allPaths = sortPaths(
-    filteredOffers(currentDevice, args.condition, args.merchantSlug)
-      .map((offer) => createPath(currentDevice, offer, args.condition, targetDevice))
-      .filter(Boolean) as RankedPath[],
-    args.sortBy,
-  );
+  const allPaths = sortPaths(candidatePaths(currentDevice, args.condition, targetDevice, args.merchantSlug), args.sortBy);
   const direct = allPaths.filter((path) => ["apple", "samsung", "google-store"].includes(path.merchant.slug));
   const flexible = allPaths.filter((path) => ["best-buy", "amazon"].includes(path.merchant.slug));
 
   return {
     inputs: { currentDevice, targetDevice, merchant, condition: args.condition },
     boards: [
-      { kicker: "Best simple path", title: `Upgrade ${currentDevice.model} to ${targetDevice.model}`, description: "The cleanest paths prioritize immediately usable value and low friction.", paths: allPaths.slice(0, 3) },
-      { kicker: "Brand-native stores", title: "Best direct brand upgrade paths", description: "These routes keep the trade-in and new purchase inside the target brand's own checkout flow when possible.", paths: direct.slice(0, 3) },
-      { kicker: "Flexible retailers", title: "Best cross-brand upgrade paths", description: "Useful when you want more flexible store credit or you are switching ecosystems.", paths: flexible.slice(0, 3) },
+      {
+        kicker: "Best simple path",
+        title: `Upgrade ${currentDevice.model} to ${targetDevice.model}`,
+        description: "Verified exact matches and fresher values outrank thin estimates, even when the estimate is slightly higher.",
+        paths: allPaths.slice(0, 3),
+      },
+      {
+        kicker: "Brand-native stores",
+        title: "Best direct brand upgrade paths",
+        description: "Brand stores stay high when they offer exact, verified purchase credit toward the target phone.",
+        paths: direct.slice(0, 3),
+      },
+      {
+        kicker: "Flexible retailers",
+        title: "Best cross-brand upgrade paths",
+        description: "Retailer paths stay visible when they keep value high without leaning on lower-trust estimates.",
+        paths: flexible.slice(0, 3),
+      },
     ] satisfies UpgradeBoard[],
   };
 }
@@ -322,6 +530,7 @@ export function buildUpgradeOptimizer(args: UpgradeArgs) {
 export function buildSellVsTradeModel(deviceSlug: string, condition: Condition = "good"): SellVsTradeModel | null {
   const device = getDevice(deviceSlug);
   if (!device) return null;
+
   const options = sellVsTradeOptions(device, condition);
   const bestTrade = options.find((option) => option.type === "trade_in");
   const bestResale = options.find((option) => option.type === "resale");
@@ -331,14 +540,14 @@ export function buildSellVsTradeModel(deviceSlug: string, condition: Condition =
     device,
     condition,
     summary: [
-      { label: "Best trade-in", value: formatCurrency(bestTrade?.value ?? 0), copy: bestTrade?.title ?? "No matching trade-in" },
-      { label: "Best resale net", value: formatCurrency(bestResale?.value ?? 0), copy: bestResale?.title ?? "No resale estimate" },
-      { label: "Difference", value: formatCurrency(Math.abs(gap)), copy: gap > 40 ? "Resale likely pays more" : "Trade-in is closer than usual" },
+      { label: "Best trade-in", value: bestTrade?.displayValue ?? "Unavailable", copy: bestTrade?.title ?? "No reliable store value found" },
+      { label: "Best resale net", value: bestResale?.displayValue ?? "Unavailable", copy: bestResale?.title ?? "No resale estimate found" },
+      { label: "Difference", value: formatCurrency(Math.abs(gap)), copy: gap > 40 ? "Resale likely pays more" : "Trade-in is close once convenience matters" },
     ],
     options,
     recommendation: gap > 40
-      ? { title: "Sell if maximizing dollars matters", copy: `Private sale is likely worth about ${formatCurrency(gap)} more, but it comes with more effort and more timing risk.` }
-      : { title: "Trade in if simplicity matters", copy: "The value gap is small enough that fast checkout credit is likely the cleaner choice for most people." },
+      ? { title: "Sell if maximizing dollars matters", copy: `Resale likely beats the top trade-in by about ${formatCurrency(gap)}, but it comes with more work and more uncertainty.` }
+      : { title: "Trade in if simplicity matters", copy: "The value gap is small enough that fast store credit is likely the cleaner move for most people." },
     chart: [
       { label: "Trade in", tradeIn: bestTrade?.value ?? 0, resale: 0 },
       { label: "Sell yourself", tradeIn: 0, resale: bestResale?.value ?? 0 },
@@ -349,21 +558,26 @@ export function buildSellVsTradeModel(deviceSlug: string, condition: Condition =
 export function buildArbitrageExplorer(): ArbitrageExplorerModel {
   const paths = sortPaths(
     acquisitionSources.flatMap((acquisition) => {
-      const device = devices.find((entry) => entry.id === acquisition.deviceId);
+      const device = deviceById(acquisition.deviceId);
       if (!device) return [];
-      return offers
-        .map((offer) => createPath(device, offer, acquisition.condition, getDevice(offer.targetDeviceOptional ?? offer.purchaseCreditTargetOptional ?? "iphone-16-pro-256"), acquisition))
+      return merchants
+        .map((merchant) => {
+          const resolved = resolveValueRecord({ device, merchant, condition: acquisition.condition });
+          if (!resolved) return null;
+          const resolvedValue = buildResolvedValue(resolved.record, resolved.fallbackLevel, resolved.whyValue, resolved.rationale);
+          return createPath({ device, record: resolved.record, resolvedValue, targetDevice: getDevice(resolved.record.targetDeviceSlug ?? undefined), acquisition });
+        })
         .filter((path): path is RankedPath => Boolean(path))
-        .filter((path) => path.netValue > 80);
+        .filter((path) => path.netValue > 60);
     }),
     "highest-value",
   ).slice(0, 6);
 
   return {
     summary: [
-      { label: "Best spread", value: formatCurrency(paths[0]?.netValue ?? 0), copy: "Net direct value after estimated acquisition cost." },
-      { label: "Opportunities", value: String(paths.length), copy: "Positive buy-low, trade-high paths in seeded data." },
-      { label: "Bias", value: "Simple stores only", copy: "No 36-month bill-credit math in these rankings." },
+      { label: "Best spread", value: paths[0]?.resolvedValue.displayValue ?? "Unavailable", copy: "Top value before subtracting the used-phone buy cost." },
+      { label: "Opportunities", value: String(paths.length), copy: "Paths where a buy-first move still survives confidence and freshness checks." },
+      { label: "Guardrails", value: "Trust-weighted", copy: "Low-confidence or stale values are pushed down even when the headline number is high." },
     ],
     paths,
   };
@@ -373,59 +587,74 @@ export function buildDealsHub(): DealsHubModel {
   const bestTrade = buildTradeInFinder({ currentDeviceSlug: "iphone-13-128", targetDeviceSlug: "iphone-16-pro-256", condition: "good" }).paths;
   const bestSamsung = buildTradeInFinder({ currentDeviceSlug: "galaxy-s23-128", targetDeviceSlug: "galaxy-s24-ultra-256", condition: "good" }).paths;
   const bestPixel = buildTradeInFinder({ currentDeviceSlug: "pixel-7-128", targetDeviceSlug: "pixel-9-pro-256", condition: "good" }).paths;
+
   return {
     sections: [
-      { eyebrow: "Best direct trade-ins", title: "Clean, immediate-value trade-ins", description: "Ranked for people who want usable value now, not telecom lock-in later.", paths: bestTrade.slice(0, 3) },
-      { eyebrow: "Best Samsung upgrades", title: "Strong Galaxy upgrade paths", description: "Best simple store paths for Samsung buyers right now.", paths: bestSamsung.slice(0, 3) },
-      { eyebrow: "Best Pixel upgrades", title: "Strong Pixel upgrade paths", description: "Straightforward Google and retailer paths without hidden plan rules.", paths: bestPixel.slice(0, 3) },
+      { eyebrow: "Best direct trade-ins", title: "Strong immediate-value paths", description: "Exact and recently checked values rank first, with estimated fallbacks clearly labeled.", paths: bestTrade.slice(0, 3) },
+      { eyebrow: "Best Samsung upgrades", title: "Clean Galaxy upgrade paths", description: "Useful when you want simple purchase-credit value without hidden lock-in.", paths: bestSamsung.slice(0, 3) },
+      { eyebrow: "Best Pixel upgrades", title: "Best current Pixel paths", description: "Google and retailer options compared with confidence and freshness built in.", paths: bestPixel.slice(0, 3) },
     ],
   };
 }
 
 export function buildHomepageSnapshot(): HomepageSnapshot {
-  const examplePath = buildTradeInFinder({ currentDeviceSlug: "iphone-13-128", targetDeviceSlug: "iphone-16-pro-256", condition: "good" }).paths[0];
+  const exampleFinder = buildTradeInFinder({ currentDeviceSlug: "iphone-13-128", targetDeviceSlug: "iphone-16-pro-256", condition: "good" });
+  const examplePath = exampleFinder.paths[0];
   const sellVsTrade = buildSellVsTradeModel("iphone-13-128", "good");
   const bestDeals = buildDealsHub().sections.flatMap((section) => section.paths).slice(0, 3);
+  const freshest = rawIngestRecords
+    .map((record) => record.retrievedAt)
+    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] ?? new Date().toISOString();
+
   return {
-    freshness: "2026-03-05",
+    freshness: freshest,
     devices: devices.slice(0, 24),
     merchants,
     examplePath,
     heroStats: {
-      bestDirectValue: bestDeals[0]?.netValue ?? 0,
-      bestResaleValue: resaleForDevice(getDevice("iphone-13-128")!.id, "good")?.netEstimatedValue ?? 0,
+      bestDirectValue: bestDeals[0]?.resolvedValue.displayValue ?? "Unavailable",
+      bestResaleValue: sellVsTrade?.options.find((option) => option.type === "resale")?.displayValue ?? "Unavailable",
       offerCount: offers.length,
       deviceCoverage: devices.length,
-      avgConfidence: offers.reduce((sum, offer) => sum + offer.confidenceScore, 0) / offers.length,
+      avgConfidence: offers.length ? offers.reduce((sum, offer) => sum + offer.confidenceScore, 0) / offers.length : 0,
     },
     merchantStrip: merchants.map((merchant) => merchant.name),
     trustItems: [
-      { label: "Simple value types", value: "Instant, store, gift card, purchase credit", copy: "No default focus on carrier bill credits or line lock-in." },
-      { label: "Transparency", value: "Confidence plus freshness on every result", copy: "Every offer carries source and verification context." },
-      { label: "Decision support", value: "Trade in vs sell vs upgrade", copy: "The site answers the practical money question, not just the headline credit question." },
-      { label: "Store coverage", value: "Apple, Samsung, Best Buy, Amazon, Google", copy: "Seeded for direct-value decision making today and expandable later." },
+      { label: "Source-backed values", value: `${rawIngestRecords.length} ingest snapshots`, copy: "Every value record carries source, freshness, and verification metadata." },
+      { label: "Simple value types", value: "Instant, store, gift card, purchase credit", copy: "No carrier bill-credit math in the core ranking." },
+      { label: "Confidence aware", value: "Ranges when certainty is low", copy: "Low-confidence estimates stop pretending to be exact numbers." },
+      { label: "Manual controls", value: `${manualOverrides.length} override path${manualOverrides.length === 1 ? "" : "s"}`, copy: "Admins can correct bad values, mark stale records, and add review notes." },
     ],
     methodologySteps: [
-      { kicker: "1", title: "Model store value", copy: "We compare each store's simple trade-in path, then normalize it against device age, condition, and store trust." },
-      { kicker: "2", title: "Benchmark resale", copy: "We estimate likely resale net value after fees so the trade-in ranking stays grounded in real alternatives." },
-      { kicker: "3", title: "Show real upgrade cost", copy: "When you pick a target phone, we subtract immediately usable credit from the target price to show the actual out-of-pocket move." },
+      { kicker: "1", title: "Capture source data", copy: "Raw merchant snapshots are stored before normalization so values can be audited later." },
+      { kicker: "2", title: "Resolve the best match", copy: "Exact verified matches rank first, then same-model storage adjustments, then family-level estimates if nothing better exists." },
+      { kicker: "3", title: "Show value quality", copy: "Each result shows source, last checked time, confidence, and why that value was chosen." },
     ],
     instantVsDelayedChart: bestDeals.map((path) => ({ label: path.merchant.name, instant: path.instantValue, delayed: path.resaleNetValue ?? 0 })),
     bestDeals,
     arbitrage: buildArbitrageExplorer().paths.slice(0, 3),
     trendingDevices: [...devices].sort((a, b) => b.searchVolume - a.searchVolume).slice(0, 6),
     differentiators: [
-      "TradeInFinder is designed to explain the best immediate value, not just surface the biggest marketing number.",
-      "Sell-it-yourself benchmarks keep store offers honest and help users decide when convenience is worth the trade-off.",
-      "Upgrade paths stay simple: Apple, Samsung, Best Buy, Amazon, and Google Store first.",
+      "Exact verified values rank above bigger-looking stale estimates.",
+      "When the app has to infer a number, it says so and often shows a range instead of fake precision.",
+      "Every result explains where the value came from and why it appears at that rank.",
     ],
     sellVsTradeHighlights: sellVsTrade?.options.slice(0, 3) ?? [],
-    popularTargets: devices.filter((device) => device.year >= 2024).slice(0, 6),
+    popularTargets: devices.filter((device) => device.year >= CURRENT_YEAR - 2).slice(0, 6),
     upgradeBoards: buildUpgradeOptimizer({ currentDeviceSlug: "iphone-13-128", targetDeviceSlug: "iphone-16-pro-256", condition: "good" }).boards,
-    expiringOffers: offers.map((offer) => ({ slug: offer.slug, merchant: storeById(offer.storeId)?.name ?? offer.storeId, target: offer.purchaseCreditTargetOptional ?? offer.targetDeviceOptional ?? "Any compatible phone", ends: offer.endDate, value: offer.tradeInValue })).sort((a, b) => a.ends.localeCompare(b.ends)).slice(0, 4),
+    expiringOffers: offers
+      .map((offer) => ({
+        slug: offer.slug,
+        merchant: storeById(offer.merchantId)?.name ?? offer.merchantId,
+        target: offer.targetDeviceSlug ?? "Compatible phones",
+        ends: new Date(new Date(offer.retrievedAt).getTime() + offer.staleAfterHours * 60 * 60 * 1000).toISOString(),
+        value: buildResolvedValue(offer, EXACT_FALLBACK_LEVEL[offer.verificationStatus], `Exact value from ${offer.sourceName}.`, [{ label: "Source", impact: offer.sourceName }]).displayValue,
+      }))
+      .sort((a, b) => a.ends.localeCompare(b.ends))
+      .slice(0, 4),
     linkSystem: [
-      { title: "Store links stay modular", copy: "Each result supports affiliate links when available and clean direct links when they are not." },
-      { title: "Monetization does not distort ranking", copy: "Stores rank on usable value, confidence, and simplicity before any affiliate consideration." },
+      { title: "Store links stay modular", copy: "Each result can carry a direct or affiliate link without affecting the underlying rank." },
+      { title: "Monetization stays secondary", copy: "Usable value, confidence, and freshness all outrank any link strategy." },
     ],
   };
 }
@@ -433,65 +662,126 @@ export function buildHomepageSnapshot(): HomepageSnapshot {
 export function buildDashboardModel(): DashboardModel {
   return {
     summary: [
-      { label: "Saved scenarios", value: String(savedScenarios.length), copy: "Trade-in and upgrade comparisons ready for auth-backed persistence." },
-      { label: "Watched items", value: String(watchedItems.length), copy: "Track specific devices, stores, and offers over time." },
-      { label: "Alert hooks", value: String(alertSubscriptions.length), copy: "Newsletter, value-change, and expiring-offer foundations are in place." },
+      { label: "Saved scenarios", value: String(savedScenarios.length), copy: "Ready for signed-in persistence once Supabase auth is connected." },
+      { label: "Watched items", value: String(watchedItems.length), copy: "Device and store monitoring hooks for future alerts." },
+      { label: "Alert hooks", value: String(alertSubscriptions.length), copy: "Notification foundations for value-change and expiring-offer updates." },
     ],
-    savedScenarios: savedScenarios.map((scenario) => ({ id: scenario.id, title: `${getDevice(scenario.currentDevice)?.model} -> ${getDevice(scenario.targetDevice)?.model}`, subtitle: `${scenario.condition} condition`, summary: scenario.resultSnapshot, status: "Saved" })),
-    watchedItems: watchedItems.map((item) => ({ id: item.id, title: item.referenceSlug.replace(/-/g, " "), note: item.note, change: item.lastChangeSummary })),
     notificationHooks: [
-      { title: "Watched device alerts", copy: "Notify when a tracked phone crosses a user-set value threshold." },
-      { title: "Store-change alerts", copy: "Trigger when a store's verified estimate changes meaningfully." },
-      { title: "Expiring-deal alerts", copy: "Highlight short-lived trade-in opportunities before they age out." },
+      { title: "Value-change alerts", copy: "Trigger when a watched phone moves meaningfully at a trusted store." },
+      { title: "Freshness warnings", copy: "Notify when a saved scenario relies on stale values that need re-checking." },
+      { title: "Best-path changes", copy: "Show when a previously saved upgrade path loses the top spot." },
     ],
-    alertSubscriptions: alertSubscriptions.map((subscription) => ({ label: subscription.type.replace(/_/g, " "), status: subscription.status, scope: subscription.referenceSlug })),
   };
 }
 
 export function buildMethodologyModel(): MethodologyModel {
   return {
     sections: [
-      { title: "How rankings work", copy: "TradeInFinder ranks simple store offers by usable value, store trust, freshness, and how the result compares with likely resale net value.", points: ["Immediate-value paths rank above complicated store-balance outcomes when dollars are close.", "Resale benchmarks keep direct trade-in recommendations honest.", "Upgrade cost is target price minus immediately usable credit."] },
-      { title: "Confidence scores", copy: "Confidence blends source freshness, store trust, and how closely the modeled store value matches resale comps for the same device and condition.", points: ["Verified direct-store values score highest.", "Manual or estimated entries remain visible but are tagged and scored lower.", "Older or thinner comp sets lower confidence rather than pretending precision."] },
-      { title: "What is seeded vs live", copy: "The current launch foundation uses realistic seeded values and timestamps. The ingest model is already shaped for live store updates later.", points: ["Devices, stores, offers, and resale estimates are seeded today.", "Raw ingest records and freshness timestamps are already represented in the schema.", "Affiliate handling is modular and does not control ranking position."] },
-      { title: "Limitations", copy: "This product intentionally avoids leading with 36-month carrier bill-credit math. That keeps the experience easier to trust, but it also means some carrier-specific edge cases are not shown by default.", points: ["Local taxes and shipping are not modeled in the current pass.", "Private-party resale still varies by timing and listing quality.", "Final store inspection can change the payout when condition assumptions are wrong."] },
+      {
+        title: "How values are normalized",
+        copy: "Every value record includes a source URL, raw ingest reference, retrieval time, staleness threshold, confidence score, and verification status.",
+        points: [
+          "Value types stay separate: instant credit, store credit, gift card, purchase credit, and resale estimate.",
+          "User-facing conditions are simplified to Good, Damaged, and Poor / not accepted.",
+          "Values without source or freshness metadata are not allowed into the normalized layer.",
+        ],
+      },
+      {
+        title: "Confidence and freshness",
+        copy: "Confidence rises when the match is exact, recent, parser quality is high, and the merchant itself is trustworthy.",
+        points: [
+          "Verified values can still go stale if they age past the record's freshness threshold.",
+          "Low-confidence or family-level estimates show as ranges instead of fake exact amounts.",
+          "Manual overrides can improve trust when an admin has reviewed the value directly.",
+        ],
+      },
+      {
+        title: "Fallback hierarchy",
+        copy: "TradeInFinder uses the cleanest available match first, then steps down in a visible and honest order.",
+        points: [
+          "1. Exact verified value",
+          "2. Exact estimated value",
+          "3. Same model, different storage adjusted estimate",
+          "4. Similar family estimate",
+          "5. Unavailable",
+        ],
+      },
+      {
+        title: "What the ranking rewards",
+        copy: "A slightly lower but verified value can rank above a higher stale estimate because trust matters.",
+        points: [
+          "The ranking blends usable value, freshness, confidence, merchant trust, and exactness of match.",
+          "Low-confidence values are visible, but they should not dominate the page just because the raw number is high.",
+          "Resale remains clearly labeled as an estimate with more uncertainty than direct store value.",
+        ],
+      },
     ],
   };
 }
 
 export function buildAdminModel(): AdminModel {
+  const inspectorPaths = offers.slice(0, 4).map((offer) => {
+    const merchant = storeById(offer.merchantId)!;
+    const device = deviceById(offer.deviceId)!;
+    const fallbackLevel = EXACT_FALLBACK_LEVEL[offer.verificationStatus];
+    const resolved = buildResolvedValue(
+      offer,
+      fallbackLevel,
+      `Exact ${device.model} ${offer.storageVariant} value from ${offer.sourceName}.`,
+      [
+        { label: "Parser", impact: rawIngestById.get(offer.rawSourceId)?.merchantParserVersion ?? "Unknown parser version" },
+        { label: "Condition", impact: `Mapped to ${conditionLabel(offer.condition)}.` },
+      ],
+    );
+    return {
+      title: `${merchant.name} - ${device.model}`,
+      rawSource: `${offer.sourceName} (${offer.rawSourceId})`,
+      normalizedValue: `${resolved.displayValue} ${formatValueType(offer.valueType).toLowerCase()}`,
+      confidence: `${resolved.confidenceLabel} (${Math.round(offer.confidenceScore * 100)}%)`,
+      fallback: fallbackLabel(resolved.fallbackLevel),
+      stale: resolved.stale ? "Yes" : "No",
+    };
+  });
+
   return {
     summary: [
-      { label: "Devices", value: String(devices.length), copy: "Large seeded phone catalog ready for CRUD." },
-      { label: "Stores", value: String(merchants.length), copy: "Simple-store-first merchant coverage." },
-      { label: "Offers", value: String(offers.length), copy: "Direct-value trade-in offers with freshness and confidence fields." },
-      { label: "Raw ingest", value: String(rawIngestRecords.length), copy: "Foundation for CSV, scraping, and manual verification pipelines." },
+      { label: "Devices", value: String(devices.length), copy: "Phone catalog available for exact and fallback matching." },
+      { label: "Stores", value: String(merchants.length), copy: "Merchant adapters keep parsing logic separated by source." },
+      { label: "Values", value: String(offers.length + resaleEstimates.length), copy: "Normalized records with source and freshness metadata." },
+      { label: "Raw ingest", value: String(rawIngestRecords.length), copy: "Auditable snapshots for parser QA and manual review." },
     ],
     collections: [
-      { title: "Devices", copy: "Phone catalog, storage tiers, support flags, and target ranking metadata.", count: String(devices.length) },
-      { title: "Stores", copy: "Apple, Samsung, Best Buy, Amazon, Google Store, and resale benchmark sources.", count: String(merchants.length) },
-      { title: "Trade-in offers", copy: "Simple value offers with source type, freshness, and confidence controls.", count: String(offers.length) },
-      { title: "Resale estimates", copy: "Net sale benchmarks by device, condition, and source type.", count: String(resaleEstimates.length) },
+      { title: "Raw ingest", copy: "Stored payload snapshots, parser version, parse status, and errors for every merchant source.", count: String(rawIngestRecords.length) },
+      { title: "Normalized values", copy: "Device-specific value records with staleness windows, confidence, and verification status.", count: String(offers.length + resaleEstimates.length) },
+      { title: "Manual overrides", copy: "Admin-reviewed value corrections that can force a manual status or disable bad records.", count: String(manualOverrides.length) },
+      { title: "Resale benchmarks", copy: "Estimated sell-it-yourself net values kept separate from store trade-in records.", count: String(resaleEstimates.length) },
     ],
     actions: [
-      { title: "Mark stale values", copy: "Flag direct-store values that have aged past the verification window." },
-      { title: "Override confidence", copy: "Raise or lower confidence on thin or freshly verified data." },
-      { title: "Inspect raw sources", copy: "Review raw ingest payloads before promoting them into live offer records." },
+      { title: "Update value", copy: "Correct a single bad value without waiting for the next parser run." },
+      { title: "Mark verified or stale", copy: "Move records between review states as they age or get checked manually." },
+      { title: "Inspect parser output", copy: "Compare the raw source snapshot with the normalized result and confidence rationale." },
     ],
+    inspectors: inspectorPaths,
+    overrides: manualOverrides.map((override) => ({
+      title: `${storeById(override.merchantId)?.name ?? override.merchantId} override`,
+      status: `${override.verificationStatus} - ${override.active ? "active" : "disabled"}`,
+      note: override.notes,
+    })),
   };
 }
 
 export function getDevicePageModel(slug: string): DevicePageModel | null {
   const device = getDevice(slug);
   if (!device) return null;
-  const targetSlug = device.brand === "Apple" ? "iphone-16-pro-256" : device.brand === "Samsung" ? "galaxy-s24-ultra-256" : "pixel-9-pro-256";
+  const targetSlug = device.brand === "Apple" ? "iphone-16-pro-256" : device.brand === "Samsung" ? "galaxy-s24-ultra-256" : device.brand === "Google" ? "pixel-9-pro-256" : "iphone-16-128";
   const sellVsTrade = buildSellVsTradeModel(slug, "good");
+  if (!sellVsTrade) return null;
   const paths = buildTradeInFinder({ currentDeviceSlug: slug, targetDeviceSlug: targetSlug, condition: "good" }).paths.slice(0, 6);
   return {
     device,
     chart: paths.map((path) => ({ label: path.merchant.name, instant: path.instantValue, delayed: path.resaleNetValue ?? 0 })),
     paths,
-    sellVsTrade: sellVsTrade!,
+    sellVsTrade,
     relatedLinks: [
       { label: `Best trade-in for ${device.model}`, href: `/best-trade-in/${device.slug}` },
       { label: `Sell vs trade ${device.model}`, href: `/resale-vs-trade/${device.slug}` },
@@ -503,16 +793,18 @@ export function getDevicePageModel(slug: string): DevicePageModel | null {
 export function getMerchantPageModel(slug: string): MerchantPageModel | null {
   const merchant = getStore(slug);
   if (!merchant) return null;
-  const sampleDevices = devices.filter((device) => merchant.slug === "apple" ? device.brand === "Apple" : merchant.slug === "samsung" ? device.brand === "Samsung" : true).slice(0, 6);
-  const paths = sortPaths(sampleDevices.flatMap((device) => filteredOffers(device, "good", merchant.slug).map((offer) => createPath(device, offer, "good"))).filter(Boolean) as RankedPath[]).slice(0, 6);
+  const sampleDevices = devices
+    .filter((device) => merchant.slug === "apple" ? device.brand === "Apple" : merchant.slug === "samsung" ? device.brand === "Samsung" : merchant.slug === "google-store" ? device.brand === "Google" : true)
+    .slice(0, 6);
+  const paths = sortPaths(sampleDevices.flatMap((device) => candidatePaths(device, "good", undefined, merchant.slug))).slice(0, 6);
   return {
     merchant,
     tags: [merchant.type, `Trust ${Math.round(merchant.trustScore * 100)}%`, merchant.affiliateCapable ? "Affiliate-ready" : "Direct links"],
     paths,
     rules: [
-      "Results show immediately understandable credit types only.",
-      "Confidence is based on freshness, source quality, and comp stability.",
-      "Trade-in estimates assume the selected condition survives final inspection.",
+      "Each value shows a source, freshness label, and confidence label.",
+      "Stale or fallback estimates stay visible but rank lower than fresh exact matches.",
+      "Poor-condition devices are treated as not accepted unless the source says otherwise.",
     ],
     relatedLinks: sampleDevices.slice(0, 3).map((device) => ({ label: `${device.model} trade-in`, href: `/trade-in/${device.slug}/${merchant.slug}` })),
   };
@@ -521,19 +813,35 @@ export function getMerchantPageModel(slug: string): MerchantPageModel | null {
 export function getOfferPageModel(slug: string): OfferPageModel | null {
   const offer = offers.find((entry) => entry.slug === slug);
   if (!offer) return null;
-  const merchant = storeById(offer.storeId);
-  if (!merchant) return null;
-  const device = getDevice(offer.acceptedTradeInDevices[0]);
-  if (!device) return null;
-  const targetDevice = getDevice(offer.purchaseCreditTargetOptional ?? offer.targetDeviceOptional ?? undefined);
-  const primaryPath = createPath(device, offer, "good", targetDevice) ?? createPath(device, offer, "mint", targetDevice);
+  const merchant = storeById(offer.merchantId);
+  const device = deviceById(offer.deviceId);
+  if (!merchant || !device) return null;
+  const targetDevice = getDevice(offer.targetDeviceSlug ?? undefined);
+  const resolved = buildResolvedValue(
+    offer,
+    EXACT_FALLBACK_LEVEL[offer.verificationStatus],
+    `Exact ${device.model} ${offer.storageVariant} value from ${offer.sourceName}.`,
+    [
+      { label: "Source", impact: offer.sourceName },
+      { label: "Condition", impact: conditionLabel(offer.condition) },
+      { label: "Value type", impact: formatValueType(offer.valueType) },
+    ],
+  );
+  const primaryPath = createPath({ device, record: offer, resolvedValue: resolved, targetDevice });
   if (!primaryPath) return null;
+  const acceptedDevices = offers
+    .filter((entry) => entry.merchantId === offer.merchantId && entry.valueType === offer.valueType)
+    .map((entry) => deviceById(entry.deviceId)?.model)
+    .filter((value, index, array): value is string => Boolean(value) && array.indexOf(value) === index)
+    .slice(0, 10)
+    .join(", ");
+
   return {
-    offer: { ...offer, merchant, confidenceLabel: confidenceLabels.find((item) => offer.confidenceScore >= item.threshold)?.label ?? "Moderate" },
-    tags: pathTags(offer),
-    creditTimeline: offer.valueType === "gift_card" ? "Store-balance value available after acceptance" : "Immediate credit at checkout or after inspection",
-    acceptedDevices: offer.acceptedTradeInDevices.slice(0, 10).join(", "),
-    acquisitionSummary: "This simplified product centers on using your current phone first. Acquisition comps are only shown on arbitrage pages.",
+    offer: { ...offer, merchant, confidenceLabel: resolved.confidenceLabel },
+    tags: [formatValueType(offer.valueType), resolved.confidenceLabel, resolved.freshnessLabel, fallbackLabel(resolved.fallbackLevel)],
+    creditTimeline: offer.valueType === "gift_card" ? "Gift card after acceptance" : offer.valueType === "store_credit" ? "Store credit after acceptance" : "Credit applied at checkout or immediately after approval",
+    acceptedDevices,
+    acquisitionSummary: `${resolved.whyValue} ${resolved.stale ? "This value is stale and should be rechecked." : "This value is recent enough to stay in the main ranking."}`,
     primaryPath,
   };
 }
@@ -550,6 +858,4 @@ export function getComparePageModel(slug: string): ComparePageModel | null {
     boards: buildUpgradeOptimizer({ currentDeviceSlug: oldDevice.slug, targetDeviceSlug: newDevice.slug, condition: "good" }).boards,
   };
 }
-
-
 

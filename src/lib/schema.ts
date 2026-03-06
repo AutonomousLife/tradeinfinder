@@ -1,6 +1,6 @@
 ﻿import { z } from "zod";
 
-export const conditionSchema = z.enum(["mint", "good", "fair", "cracked"]);
+export const conditionSchema = z.enum(["good", "damaged", "poor"]);
 export type Condition = z.infer<typeof conditionSchema>;
 
 export const valueTypeSchema = z.enum([
@@ -8,8 +8,27 @@ export const valueTypeSchema = z.enum([
   "store_credit",
   "gift_card",
   "purchase_credit",
+  "resale_estimate",
 ]);
 export type ValueType = z.infer<typeof valueTypeSchema>;
+
+export const verificationStatusSchema = z.enum([
+  "verified",
+  "estimated",
+  "stale",
+  "manual",
+  "low_confidence",
+]);
+export type VerificationStatus = z.infer<typeof verificationStatusSchema>;
+
+export const fallbackLevelSchema = z.enum([
+  "exact_verified",
+  "exact_estimated",
+  "storage_adjusted",
+  "family_estimate",
+  "unavailable",
+]);
+export type FallbackLevel = z.infer<typeof fallbackLevelSchema>;
 
 export const deviceSchema = z.object({
   id: z.string(),
@@ -45,41 +64,64 @@ export const storeSchema = z.object({
 export type Store = z.infer<typeof storeSchema>;
 export type Merchant = Store;
 
-export const tradeInOfferSchema = z.object({
+export const rawIngestSchema = z.object({
+  id: z.string(),
+  merchantId: z.string(),
+  sourceName: z.string(),
+  fetchUrl: z.string(),
+  sourceUrl: z.string(),
+  payload: z.string(),
+  retrievedAt: z.string(),
+  parseStatus: z.enum(["parsed", "failed", "pending"]),
+  parseErrors: z.array(z.string()),
+  merchantParserVersion: z.string(),
+});
+export type RawIngestRecord = z.infer<typeof rawIngestSchema>;
+
+export const valueRecordSchema = z.object({
   id: z.string(),
   slug: z.string(),
-  storeId: z.string(),
-  targetDeviceOptional: z.string().nullable(),
-  purchaseCreditTargetOptional: z.string().nullable(),
-  acceptedTradeInDevices: z.array(z.string()),
-  acceptedConditions: z.array(conditionSchema),
-  valueType: valueTypeSchema,
-  tradeInValue: z.number(),
-  startDate: z.string(),
-  endDate: z.string(),
-  sourceUrl: z.string(),
-  sourceType: z.enum(["verified", "estimated", "manual"]),
-  confidenceScore: z.number(),
-  lastVerifiedAt: z.string(),
-  notes: z.string(),
-  finePrintSummary: z.string(),
-});
-export type TradeInOffer = z.infer<typeof tradeInOfferSchema>;
-export type Offer = TradeInOffer;
-
-export const resaleEstimateSchema = z.object({
-  id: z.string(),
   deviceId: z.string(),
-  sourceType: z.enum(["ebay", "marketplace", "manual"]),
+  merchantId: z.string(),
+  storageVariant: z.string(),
   condition: conditionSchema,
-  estimatedSalePrice: z.number(),
-  estimatedFees: z.number(),
-  netEstimatedValue: z.number(),
+  valueAmount: z.number(),
+  currency: z.string(),
+  valueType: valueTypeSchema,
+  sourceName: z.string(),
+  sourceUrl: z.string(),
+  rawSourceId: z.string(),
+  retrievedAt: z.string(),
+  staleAfterHours: z.number(),
+  verificationStatus: verificationStatusSchema,
   confidenceScore: z.number(),
-  lastCheckedAt: z.string(),
   notes: z.string(),
+  manualOverride: z.boolean(),
+  active: z.boolean(),
+  targetDeviceSlug: z.string().nullable().default(null),
+  conditionNotes: z.string().nullable().default(null),
+  exactStorageMatch: z.boolean().default(true),
 });
-export type ResaleEstimate = z.infer<typeof resaleEstimateSchema>;
+export type ValueRecord = z.infer<typeof valueRecordSchema>;
+export type TradeInOffer = ValueRecord;
+export type Offer = ValueRecord;
+
+export const manualOverrideSchema = z.object({
+  id: z.string(),
+  valueRecordId: z.string().nullable(),
+  deviceId: z.string(),
+  merchantId: z.string(),
+  storageVariant: z.string(),
+  condition: conditionSchema,
+  valueAmount: z.number(),
+  valueType: valueTypeSchema,
+  verificationStatus: verificationStatusSchema,
+  confidenceScore: z.number(),
+  notes: z.string(),
+  active: z.boolean(),
+  reviewedAt: z.string(),
+});
+export type ManualOverride = z.infer<typeof manualOverrideSchema>;
 
 export const acquisitionSourceSchema = z.object({
   id: z.string(),
@@ -127,16 +169,24 @@ export const alertSubscriptionSchema = z.object({
 });
 export type AlertSubscription = z.infer<typeof alertSubscriptionSchema>;
 
-export const rawIngestSchema = z.object({
-  id: z.string(),
-  sourceName: z.string(),
-  sourceUrl: z.string(),
-  payload: z.string(),
-  parsedAt: z.string(),
-  status: z.enum(["parsed", "failed", "pending"]),
-  errors: z.string(),
-});
-export type RawIngestRecord = z.infer<typeof rawIngestSchema>;
+export type ConfidenceRationale = {
+  label: string;
+  impact: string;
+};
+
+export type ResolvedValue = {
+  record: ValueRecord;
+  stale: boolean;
+  fallbackLevel: FallbackLevel;
+  confidenceLabel: string;
+  freshnessLabel: string;
+  whyValue: string;
+  confidenceRationale: ConfidenceRationale[];
+  displayValue: string;
+  rangeLow?: number;
+  rangeHigh?: number;
+  deprioritized: boolean;
+};
 
 export type RankedPath = {
   slug: string;
@@ -145,8 +195,9 @@ export type RankedPath = {
   reasonBadge: string;
   device: Device;
   merchant: Store;
-  offer: TradeInOffer;
+  offer: ValueRecord;
   acquisition: AcquisitionSource | null;
+  resolvedValue: ResolvedValue;
   netValue: number;
   effectiveUpgradeCost: number;
   instantValue: number;
@@ -176,13 +227,16 @@ export type SellVsTradeOption = {
   title: string;
   subtitle: string;
   value: number;
+  displayValue: string;
   confidence: number;
+  confidenceLabel: string;
   speed: string;
   effort: string;
   risk: string;
   caveat: string;
   label: string;
   href: string;
+  freshnessLabel: string;
 };
 
 export type UpgradeBoard = {
@@ -200,11 +254,11 @@ export type TradeInFinderModel = {
     condition: Condition;
   };
   summary: {
-    bestTradeInValue: number;
+    bestTradeInValue: string;
     bestTradeInLabel: string;
-    bestResaleValue: number;
+    bestResaleValue: string;
     bestResaleLabel: string;
-    bestUpgradeValue: number;
+    bestUpgradeValue: string;
     bestUpgradeLabel: string;
     avgConfidence: number;
   };
@@ -242,21 +296,7 @@ export type DealsHubModel = {
 
 export type DashboardModel = {
   summary: { label: string; value: string; copy: string }[];
-  savedScenarios: {
-    id: string;
-    title: string;
-    subtitle: string;
-    summary: string;
-    status: string;
-  }[];
-  watchedItems: {
-    id: string;
-    title: string;
-    note: string;
-    change: string;
-  }[];
   notificationHooks: { title: string; copy: string }[];
-  alertSubscriptions: { label: string; status: string; scope: string }[];
 };
 
 export type MethodologyModel = {
@@ -267,6 +307,19 @@ export type AdminModel = {
   summary: { label: string; value: string; copy: string }[];
   collections: { title: string; copy: string; count: string }[];
   actions: { title: string; copy: string }[];
+  inspectors: {
+    title: string;
+    rawSource: string;
+    normalizedValue: string;
+    confidence: string;
+    fallback: string;
+    stale: string;
+  }[];
+  overrides: {
+    title: string;
+    status: string;
+    note: string;
+  }[];
 };
 
 export type DevicePageModel = {
@@ -286,7 +339,7 @@ export type MerchantPageModel = {
 };
 
 export type OfferPageModel = {
-  offer: TradeInOffer & {
+  offer: ValueRecord & {
     merchant: Store;
     confidenceLabel: string;
   };
@@ -309,8 +362,8 @@ export type HomepageSnapshot = {
   merchants: Store[];
   examplePath: RankedPath;
   heroStats: {
-    bestDirectValue: number;
-    bestResaleValue: number;
+    bestDirectValue: string;
+    bestResaleValue: string;
     offerCount: number;
     deviceCoverage: number;
     avgConfidence: number;
@@ -326,6 +379,6 @@ export type HomepageSnapshot = {
   sellVsTradeHighlights: SellVsTradeOption[];
   popularTargets: Device[];
   upgradeBoards: UpgradeBoard[];
-  expiringOffers: { slug: string; merchant: string; target: string; ends: string; value: number }[];
+  expiringOffers: { slug: string; merchant: string; target: string; ends: string; value: string }[];
   linkSystem: { title: string; copy: string }[];
 };

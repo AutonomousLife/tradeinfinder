@@ -2,7 +2,7 @@
 
 import { ChartPanel } from "@/components/chart-panel";
 import { PathCard } from "@/components/path-card";
-import { formatCurrency, formatPercent } from "@/lib/format";
+import { formatPercent } from "@/lib/format";
 import type { TradeInFinderModel } from "@/lib/schema";
 
 export function FinderResults({ model }: { model: TradeInFinderModel }) {
@@ -11,7 +11,7 @@ export function FinderResults({ model }: { model: TradeInFinderModel }) {
       <div className="card rounded-[2rem] p-8">
         <p className="font-mono text-xs uppercase tracking-[0.22em] text-accent">No matching store values</p>
         <h2 className="mt-3 text-3xl font-semibold tracking-tight">Nothing matches this exact filter set.</h2>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">Try a different store, a better condition assumption, or remove the target phone if you just want the highest direct value.</p>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">Try a different store or a less strict condition. If TradeInFinder cannot find an exact match, it will show estimated fallbacks only when they are honest enough to display.</p>
       </div>
     );
   }
@@ -19,9 +19,9 @@ export function FinderResults({ model }: { model: TradeInFinderModel }) {
   return (
     <div className="grid gap-6">
       <section className="grid gap-4 md:grid-cols-4">
-        <SummaryCard label="Best trade-in" value={formatCurrency(model.summary.bestTradeInValue)} hint={model.summary.bestTradeInLabel} />
-        <SummaryCard label="Best resale" value={formatCurrency(model.summary.bestResaleValue)} hint={model.summary.bestResaleLabel} />
-        <SummaryCard label="Best upgrade cost" value={formatCurrency(model.summary.bestUpgradeValue)} hint={model.summary.bestUpgradeLabel} />
+        <SummaryCard label="Best trade-in" value={model.summary.bestTradeInValue} hint={model.summary.bestTradeInLabel} />
+        <SummaryCard label="Best resale" value={model.summary.bestResaleValue} hint={model.summary.bestResaleLabel} />
+        <SummaryCard label="Best upgrade cost" value={model.summary.bestUpgradeValue} hint={model.summary.bestUpgradeLabel} />
         <SummaryCard label="Average confidence" value={formatPercent(model.summary.avgConfidence)} hint={`${model.paths.length} ranked paths`} />
       </section>
       <section className="card rounded-[2rem] p-6">
@@ -43,8 +43,9 @@ export function FinderResults({ model }: { model: TradeInFinderModel }) {
               <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">{option.label}</p>
               <h3 className="mt-2 text-lg font-semibold">{option.title}</h3>
               <p className="mt-1 text-sm text-muted">{option.subtitle}</p>
-              <p className="mt-4 text-2xl font-semibold tracking-tight">{formatCurrency(option.value)}</p>
+              <p className="mt-4 text-2xl font-semibold tracking-tight">{option.displayValue}</p>
               <p className="mt-2 text-sm text-muted">{option.speed} · {option.effort} · {option.risk}</p>
+              <p className="mt-1 text-xs text-muted">{option.confidenceLabel} · {option.freshnessLabel}</p>
             </Link>
           ))}
         </div>
@@ -68,3 +69,4 @@ function SummaryCard({ label, value, hint }: { label: string; value: string; hin
     </div>
   );
 }
+

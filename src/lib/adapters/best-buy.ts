@@ -1,0 +1,28 @@
+﻿import type { MerchantAdapter } from "@/lib/adapters/base";
+import { compactPayload, createValueRecord } from "@/lib/adapters/base";
+
+export const bestBuyAdapter: MerchantAdapter = {
+  merchantId: "best-buy",
+  parserVersion: "bestbuy-v2",
+  parse(raw, context) {
+    return compactPayload(raw).entries
+      .map((entry) =>
+        createValueRecord({
+          raw,
+          context,
+          deviceSlug: entry.deviceSlug,
+          storageVariant: entry.storageVariant,
+          rawCondition: entry.condition,
+          valueAmount: entry.valueAmount,
+          valueType: entry.valueType,
+          targetDeviceSlug: entry.targetDeviceSlug,
+          notes: entry.notes,
+          exactMatch: entry.exactMatch,
+          exactStorageMatch: entry.exactStorageMatch,
+          parserQuality: entry.parserQuality ?? 0.82,
+          staleAfterHours: entry.staleAfterHours ?? 24,
+        }),
+      )
+      .filter((value): value is NonNullable<typeof value> => Boolean(value));
+  },
+};
