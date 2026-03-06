@@ -10,8 +10,7 @@ import { getSearchParam } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: "Trade-In Finder",
-  description:
-    "Rank phone trade-in offers by instant value, promo value, bill credit drag, requirements, and confidence.",
+  description: "Compare direct trade-in value, gift card paths, store credit, and resale benchmarks for your phone.",
 };
 
 type SearchPageProps = {
@@ -20,54 +19,25 @@ type SearchPageProps = {
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
   const resolved = (await searchParams) ?? {};
-  const tradeInType = getSearchParam(resolved.tradeInType, "all") as
-    | "all"
-    | "cash"
-    | "store_credit"
-    | "promo_credit"
-    | "bill_credit"
-    | "instant";
-  const sortBy = (getSearchParam(resolved.sortBy, "best-net") ?? "best-net") as
-    | "best-net"
-    | "highest-credit"
-    | "lowest-risk"
-    | "highest-confidence"
-    | "instant";
+  const valueType = (getSearchParam(resolved.valueType, "all") ?? "all") as "all" | "instant_credit" | "purchase_credit" | "store_credit" | "gift_card";
+  const sortBy = (getSearchParam(resolved.sortBy, "highest-value") ?? "highest-value") as "highest-value" | "easiest" | "best-upgrade" | "highest-confidence" | "newest";
+  const targetDevice = getSearchParam(resolved.targetDevice) || undefined;
   const finder = buildTradeInFinder({
     currentDeviceSlug: getSearchParam(resolved.currentDevice, "iphone-13-128") ?? "iphone-13-128",
-    targetDeviceSlug: getSearchParam(resolved.targetDevice, "iphone-16-pro-256") ?? "iphone-16-pro-256",
-    condition: getSearchParam(resolved.condition, "good") ?? "good",
+    targetDeviceSlug: targetDevice,
+    condition: (getSearchParam(resolved.condition, "good") ?? "good") as "mint" | "good" | "fair" | "cracked",
     merchantSlug: getSearchParam(resolved.merchant),
-    tradeInType,
+    valueType,
     sortBy,
-    instantOnly: getSearchParam(resolved.instantOnly) === "true",
-    excludeNewLine: getSearchParam(resolved.excludeNewLine) === "true",
   });
 
   return (
     <PageShell className="gap-10 pb-24 pt-10">
-      <SectionHeading
-        eyebrow="Trade-in value finder"
-        title="See the highest real value for your current phone."
-        description="The finder separates instant cash, store credit, promotional trade-ins, and bill-credit offers so the top result is explainable instead of opaque."
-      />
+      <SectionHeading eyebrow="Trade-in finder" title="See the best immediate value for your current phone." description="Results compare simple store paths against likely resale value so you can decide whether to trade in, sell, or upgrade without hidden lock-in math." />
       <div className="grid gap-6 xl:grid-cols-[380px_1fr]">
-        <QuickStartForm
-          devices={devices}
-          merchants={merchants}
-          defaultCurrentDevice={finder.inputs.currentDevice.slug}
-          defaultTargetDevice={finder.inputs.targetDevice.slug}
-          defaultMerchant={finder.inputs.merchant?.slug}
-          defaultCondition={finder.inputs.condition}
-          defaultSortBy={sortBy}
-          defaultTradeInType={tradeInType}
-          defaultInstantOnly={getSearchParam(resolved.instantOnly) === "true"}
-          defaultExcludeNewLine={getSearchParam(resolved.excludeNewLine) === "true"}
-          mode="finder"
-        />
+        <QuickStartForm devices={devices} merchants={merchants} defaultCurrentDevice={finder.inputs.currentDevice.slug} defaultTargetDevice={finder.inputs.targetDevice?.slug} defaultMerchant={finder.inputs.merchant?.slug} defaultCondition={finder.inputs.condition} defaultSortBy={sortBy} defaultValueType={valueType} mode="finder" />
         <FinderResults model={finder} />
       </div>
     </PageShell>
   );
 }
-

@@ -1,6 +1,10 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 
 import { buildTradeInFinder } from "@/lib/engine";
+
+function parseCondition(value: string | null): "mint" | "good" | "fair" | "cracked" {
+  return value === "mint" || value === "fair" || value === "cracked" ? value : "good";
+}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -8,9 +12,11 @@ export async function GET(request: Request) {
   return NextResponse.json(
     buildTradeInFinder({
       currentDeviceSlug: searchParams.get("currentDevice") ?? "iphone-13-128",
-      targetDeviceSlug: searchParams.get("targetDevice") ?? "iphone-16-pro-256",
-      condition: searchParams.get("condition") ?? "good",
+      targetDeviceSlug: searchParams.get("targetDevice") ?? undefined,
+      condition: parseCondition(searchParams.get("condition")),
       merchantSlug: searchParams.get("merchant") ?? undefined,
+      valueType: (searchParams.get("valueType") as "all" | "instant_credit" | "purchase_credit" | "store_credit" | "gift_card" | null) ?? "all",
+      sortBy: (searchParams.get("sortBy") as "highest-value" | "easiest" | "best-upgrade" | "highest-confidence" | "newest" | null) ?? "highest-value",
     }),
   );
 }

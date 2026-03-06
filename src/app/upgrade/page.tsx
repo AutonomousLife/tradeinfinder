@@ -10,8 +10,7 @@ import { getSearchParam } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: "Upgrade Optimizer",
-  description:
-    "Compare direct upgrades, low-risk paths, and arbitrage paths to lower the real cost of a new phone.",
+  description: "Compare simple upgrade paths using direct trade-in credit, store credit, and clean checkout value.",
 };
 
 type UpgradePageProps = {
@@ -20,46 +19,22 @@ type UpgradePageProps = {
 
 export default async function UpgradePage({ searchParams }: UpgradePageProps) {
   const resolved = (await searchParams) ?? {};
-  const sortBy = (getSearchParam(resolved.sortBy, "best-net") ?? "best-net") as
-    | "best-net"
-    | "highest-credit"
-    | "lowest-risk"
-    | "highest-confidence"
-    | "instant";
+  const sortBy = (getSearchParam(resolved.sortBy, "best-upgrade") ?? "best-upgrade") as "highest-value" | "easiest" | "best-upgrade" | "highest-confidence" | "newest";
   const model = buildUpgradeOptimizer({
     currentDeviceSlug: getSearchParam(resolved.currentDevice, "iphone-13-128") ?? "iphone-13-128",
     targetDeviceSlug: getSearchParam(resolved.targetDevice, "iphone-16-pro-256") ?? "iphone-16-pro-256",
-    condition: getSearchParam(resolved.condition, "good") ?? "good",
+    condition: (getSearchParam(resolved.condition, "good") ?? "good") as "mint" | "good" | "fair" | "cracked",
     merchantSlug: getSearchParam(resolved.merchant),
-    allowIntermediate: getSearchParam(resolved.allowIntermediate, "true") === "true",
-    excludeNewLine: getSearchParam(resolved.excludeNewLine) === "true",
-    unlockedOnly: getSearchParam(resolved.unlockedOnly) === "true",
     sortBy,
   });
 
   return (
     <PageShell className="gap-10 pb-24 pt-10">
-      <SectionHeading
-        eyebrow="Upgrade path optimizer"
-        title="Optimize the move from your old phone to the next one."
-        description="TradeInFinder compares direct trade-ins, lower-risk unlocked paths, and buy-first arbitrage scenarios using the same scoring model."
-      />
+      <SectionHeading eyebrow="Upgrade optimizer" title="See the cleanest path from your current phone to the next one." description="TradeInFinder focuses on store credit, direct checkout value, and simple upgrade math so the recommendation is actually understandable." />
       <div className="grid gap-6 xl:grid-cols-[380px_1fr]">
-        <QuickStartForm
-          devices={devices}
-          merchants={merchants}
-          defaultCurrentDevice={model.inputs.currentDevice.slug}
-          defaultTargetDevice={model.inputs.targetDevice.slug}
-          defaultMerchant={model.inputs.merchant?.slug}
-          defaultCondition={model.inputs.condition}
-          defaultSortBy={sortBy}
-          defaultExcludeNewLine={getSearchParam(resolved.excludeNewLine) === "true"}
-          defaultUnlockedOnly={getSearchParam(resolved.unlockedOnly) === "true"}
-          mode="upgrade"
-        />
+        <QuickStartForm devices={devices} merchants={merchants} defaultCurrentDevice={model.inputs.currentDevice.slug} defaultTargetDevice={model.inputs.targetDevice.slug} defaultMerchant={model.inputs.merchant?.slug} defaultCondition={model.inputs.condition} defaultSortBy={sortBy} mode="upgrade" />
         <ComparisonBoard scenarios={model.boards} />
       </div>
     </PageShell>
   );
 }
-

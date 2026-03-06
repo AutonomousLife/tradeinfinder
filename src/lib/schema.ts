@@ -3,6 +3,14 @@
 export const conditionSchema = z.enum(["mint", "good", "fair", "cracked"]);
 export type Condition = z.infer<typeof conditionSchema>;
 
+export const valueTypeSchema = z.enum([
+  "instant_credit",
+  "store_credit",
+  "gift_card",
+  "purchase_credit",
+]);
+export type ValueType = z.infer<typeof valueTypeSchema>;
+
 export const deviceSchema = z.object({
   id: z.string(),
   slug: z.string(),
@@ -19,54 +27,59 @@ export const deviceSchema = z.object({
   notes: z.string(),
   searchVolume: z.number().default(0),
   trendScore: z.number().default(0),
-  carrierLockFriendly: z.boolean().default(true),
+  preferredStoreSlugs: z.array(z.string()).default([]),
 });
 export type Device = z.infer<typeof deviceSchema>;
 
-export const merchantSchema = z.object({
+export const storeSchema = z.object({
   id: z.string(),
   slug: z.string(),
   name: z.string(),
-  type: z.enum(["carrier", "retailer", "manufacturer", "marketplace", "reseller"]),
+  type: z.enum(["manufacturer", "retailer", "marketplace", "trade_in_platform"]),
   logoUrl: z.string(),
   siteUrl: z.string(),
   affiliateCapable: z.boolean(),
-  defaultLinkType: z.enum(["direct", "affiliate", "referral"]),
   trustScore: z.number(),
   notes: z.string(),
 });
-export type Merchant = z.infer<typeof merchantSchema>;
+export type Store = z.infer<typeof storeSchema>;
+export type Merchant = Store;
 
-export const offerSchema = z.object({
+export const tradeInOfferSchema = z.object({
   id: z.string(),
   slug: z.string(),
-  merchantId: z.string(),
-  carrierName: z.string().nullable(),
-  targetDevice: z.string(),
-  targetDeviceSlug: z.string(),
+  storeId: z.string(),
+  targetDeviceOptional: z.string().nullable(),
+  purchaseCreditTargetOptional: z.string().nullable(),
   acceptedTradeInDevices: z.array(z.string()),
   acceptedConditions: z.array(conditionSchema),
-  tradeInType: z.enum(["cash", "store_credit", "promo_credit", "bill_credit", "instant"]),
+  valueType: valueTypeSchema,
   tradeInValue: z.number(),
-  monthlyCreditAmount: z.number().nullable(),
-  months: z.number().nullable(),
-  newLineRequired: z.boolean(),
-  installmentRequired: z.boolean(),
-  eligiblePlanRequired: z.boolean(),
-  onlineOnly: z.boolean(),
-  inStoreOnly: z.boolean(),
-  unlockedRequired: z.boolean(),
-  activationRequired: z.boolean(),
   startDate: z.string(),
   endDate: z.string(),
   sourceUrl: z.string(),
   sourceType: z.enum(["verified", "estimated", "manual"]),
   confidenceScore: z.number(),
   lastVerifiedAt: z.string(),
+  notes: z.string(),
   finePrintSummary: z.string(),
+});
+export type TradeInOffer = z.infer<typeof tradeInOfferSchema>;
+export type Offer = TradeInOffer;
+
+export const resaleEstimateSchema = z.object({
+  id: z.string(),
+  deviceId: z.string(),
+  sourceType: z.enum(["ebay", "marketplace", "manual"]),
+  condition: conditionSchema,
+  estimatedSalePrice: z.number(),
+  estimatedFees: z.number(),
+  netEstimatedValue: z.number(),
+  confidenceScore: z.number(),
+  lastCheckedAt: z.string(),
   notes: z.string(),
 });
-export type Offer = z.infer<typeof offerSchema>;
+export type ResaleEstimate = z.infer<typeof resaleEstimateSchema>;
 
 export const acquisitionSourceSchema = z.object({
   id: z.string(),
@@ -89,6 +102,7 @@ export const savedScenarioSchema = z.object({
   currentDevice: z.string(),
   targetDevice: z.string(),
   condition: conditionSchema,
+  selectedStore: z.string().nullable(),
   preferences: z.record(z.string(), z.string()),
   resultSnapshot: z.string(),
 });
@@ -97,7 +111,7 @@ export type SavedScenario = z.infer<typeof savedScenarioSchema>;
 export const watchedItemSchema = z.object({
   id: z.string(),
   userId: z.string(),
-  type: z.enum(["device", "merchant", "offer", "path"]),
+  type: z.enum(["device", "store", "offer", "upgrade_path"]),
   referenceSlug: z.string(),
   note: z.string(),
   lastChangeSummary: z.string(),
@@ -107,7 +121,7 @@ export type WatchedItem = z.infer<typeof watchedItemSchema>;
 export const alertSubscriptionSchema = z.object({
   id: z.string(),
   email: z.string().email(),
-  type: z.enum(["device_value", "merchant_offer", "expiring_offer", "arbitrage", "newsletter"]),
+  type: z.enum(["device_value", "store_offer", "expiring_offer", "newsletter"]),
   referenceSlug: z.string(),
   status: z.enum(["active", "paused"]),
 });
@@ -130,8 +144,8 @@ export type RankedPath = {
   summary: string;
   reasonBadge: string;
   device: Device;
-  merchant: Merchant;
-  offer: Offer;
+  merchant: Store;
+  offer: TradeInOffer;
   acquisition: AcquisitionSource | null;
   netValue: number;
   effectiveUpgradeCost: number;
@@ -143,6 +157,9 @@ export type RankedPath = {
   tags: string[];
   riskLevel?: "low" | "medium" | "high";
   valueTimelineLabel?: string;
+  resaleNetValue?: number;
+  resaleDelta?: number;
+  effortLabel?: "easy" | "moderate" | "higher effort";
   links: {
     acquisitionLink?: string;
     acquisitionAffiliateLink?: string;
@@ -151,6 +168,21 @@ export type RankedPath = {
     redemptionAffiliateLink?: string;
     redemptionLabel: string;
   };
+};
+
+export type SellVsTradeOption = {
+  slug: string;
+  type: "trade_in" | "resale" | "upgrade";
+  title: string;
+  subtitle: string;
+  value: number;
+  confidence: number;
+  speed: string;
+  effort: string;
+  risk: string;
+  caveat: string;
+  label: string;
+  href: string;
 };
 
 export type UpgradeBoard = {
@@ -163,22 +195,35 @@ export type UpgradeBoard = {
 export type TradeInFinderModel = {
   inputs: {
     currentDevice: Device;
-    targetDevice: Device;
-    merchant?: Merchant;
-    condition: string;
+    targetDevice?: Device;
+    merchant?: Store;
+    condition: Condition;
   };
   summary: {
-    bestNetValue: number;
-    bestNetLabel: string;
-    bestInstantValue: number;
-    bestInstantLabel: string;
-    bestPromoValue: number;
-    bestPromoLabel: string;
+    bestTradeInValue: number;
+    bestTradeInLabel: string;
+    bestResaleValue: number;
+    bestResaleLabel: string;
+    bestUpgradeValue: number;
+    bestUpgradeLabel: string;
     avgConfidence: number;
   };
   whyTopResult: { label: string; copy: string }[];
   paths: RankedPath[];
+  sellVsTrade: SellVsTradeOption[];
   chart: { label: string; instant: number; delayed: number }[];
+};
+
+export type SellVsTradeModel = {
+  device: Device;
+  condition: Condition;
+  summary: { label: string; value: string; copy: string }[];
+  options: SellVsTradeOption[];
+  recommendation: {
+    title: string;
+    copy: string;
+  };
+  chart: { label: string; tradeIn: number; resale: number }[];
 };
 
 export type ArbitrageExplorerModel = {
@@ -228,11 +273,12 @@ export type DevicePageModel = {
   device: Device;
   chart: { label: string; instant: number; delayed: number }[];
   paths: RankedPath[];
+  sellVsTrade: SellVsTradeModel;
   relatedLinks: { label: string; href: string }[];
 };
 
 export type MerchantPageModel = {
-  merchant: Merchant;
+  merchant: Store;
   tags: string[];
   paths: RankedPath[];
   rules: string[];
@@ -240,8 +286,8 @@ export type MerchantPageModel = {
 };
 
 export type OfferPageModel = {
-  offer: Offer & {
-    merchant: Merchant;
+  offer: TradeInOffer & {
+    merchant: Store;
     confidenceLabel: string;
   };
   tags: string[];
@@ -257,3 +303,29 @@ export type ComparePageModel = {
   boards: UpgradeBoard[];
 };
 
+export type HomepageSnapshot = {
+  freshness: string;
+  devices: Device[];
+  merchants: Store[];
+  examplePath: RankedPath;
+  heroStats: {
+    bestDirectValue: number;
+    bestResaleValue: number;
+    offerCount: number;
+    deviceCoverage: number;
+    avgConfidence: number;
+  };
+  merchantStrip: string[];
+  trustItems: { label: string; value: string; copy: string }[];
+  methodologySteps: { kicker: string; title: string; copy: string }[];
+  instantVsDelayedChart: { label: string; instant: number; delayed: number }[];
+  bestDeals: RankedPath[];
+  arbitrage: RankedPath[];
+  trendingDevices: Device[];
+  differentiators: string[];
+  sellVsTradeHighlights: SellVsTradeOption[];
+  popularTargets: Device[];
+  upgradeBoards: UpgradeBoard[];
+  expiringOffers: { slug: string; merchant: string; target: string; ends: string; value: number }[];
+  linkSystem: { title: string; copy: string }[];
+};

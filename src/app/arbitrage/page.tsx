@@ -1,4 +1,4 @@
-import { Metadata } from "next";
+﻿import { Metadata } from "next";
 
 import { ArbitrageBoard } from "@/components/arbitrage-board";
 import { PageShell } from "@/components/page-shell";
@@ -7,8 +7,7 @@ import { buildArbitrageExplorer } from "@/lib/engine";
 
 export const metadata: Metadata = {
   title: "Arbitrage Finder",
-  description:
-    "Find used-phone buy-and-trade spreads where acquisition cost sits below trade-in credit value.",
+  description: "Find clean buy-low, trade-high opportunities using direct-value store offers.",
 };
 
 export default function ArbitragePage() {
@@ -16,11 +15,7 @@ export default function ArbitragePage() {
 
   return (
     <PageShell className="gap-10 pb-24 pt-10">
-      <SectionHeading
-        eyebrow="Arbitrage finder"
-        title="Where buying a used trade-in phone first still wins."
-        description="Each opportunity shows estimated buy cost, trade-in value, lock-in drag, confidence, and the biggest caveat before you click out."
-      />
+      <SectionHeading eyebrow="Arbitrage finder" title="Where buying a used phone first still makes sense" description="These paths are secondary to the main product, but they are still useful when a cheap used phone can unlock a much better direct store value." />
       <ArbitrageBoard model={model} />
     </PageShell>
   );

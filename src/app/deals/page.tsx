@@ -1,4 +1,4 @@
-import { Metadata } from "next";
+﻿import { Metadata } from "next";
 
 import { DealsHub } from "@/components/deals-hub";
 import { PageShell } from "@/components/page-shell";
@@ -7,8 +7,7 @@ import { buildDealsHub } from "@/lib/engine";
 
 export const metadata: Metadata = {
   title: "Best Trade-In Deals",
-  description:
-    "Browse the strongest trade-in deals right now by brand, offer type, and effective value.",
+  description: "Browse the strongest direct trade-in and simple upgrade values right now.",
 };
 
 export default function DealsPage() {
@@ -16,11 +15,7 @@ export default function DealsPage() {
 
   return (
     <PageShell className="gap-10 pb-24 pt-10">
-      <SectionHeading
-        eyebrow="Best deals"
-        title="Ranked trade-in deals with the lock-in caveats visible."
-        description="Highlights for iPhone, Samsung, Pixel, instant-value offers, and promos expiring soon."
-      />
+      <SectionHeading eyebrow="Best deals" title="Ranked direct trade-in deals with clean value types" description="Highlights for immediate trade-in value, simple Samsung upgrades, and straightforward Pixel upgrade paths." />
       <DealsHub model={model} />
     </PageShell>
   );

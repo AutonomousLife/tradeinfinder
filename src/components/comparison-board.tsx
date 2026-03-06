@@ -18,16 +18,16 @@ export function ComparisonBoard({ scenarios }: { scenarios: UpgradeBoard[] }) {
               <div key={path.slug} className="rounded-[1.6rem] border border-line bg-panel p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-lg font-semibold">{path.label}</p>
+                    <p className="text-lg font-semibold">{path.merchant.name}</p>
                     <p className="mt-1 text-sm text-muted">{path.summary}</p>
                   </div>
                   <span className="rounded-full bg-accent-soft px-3 py-1 text-xs font-semibold text-accent">{path.reasonBadge}</span>
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <Metric label="Effective upgrade cost" value={formatCurrency(path.effectiveUpgradeCost)} />
+                  <Metric label="Upgrade cost" value={formatCurrency(path.effectiveUpgradeCost)} />
                   <Metric label="Confidence" value={formatPercent(path.confidence)} />
-                  <Metric label="Value path" value={formatCurrency(path.netValue)} />
-                  <Metric label="Merchant" value={path.merchant.name} />
+                  <Metric label="Trade-in value" value={formatCurrency(path.netValue)} />
+                  <Metric label="Usability" value={path.valueTimelineLabel ?? "Immediate value"} />
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {path.tags.map((tag) => (
@@ -39,12 +39,8 @@ export function ComparisonBoard({ scenarios }: { scenarios: UpgradeBoard[] }) {
                   <p className="mt-2 text-sm leading-6 text-foreground">{path.explanation}</p>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-3">
-                  <Link href={`/offer/${path.offer.slug}`} className="rounded-full border border-line px-4 py-2 text-sm font-semibold transition hover:bg-surface">
-                    Offer detail
-                  </Link>
-                  <Link href={path.links.redemptionLink} className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-strong">
-                    {path.links.redemptionLabel}
-                  </Link>
+                  <Link href={`/offer/${path.offer.slug}`} className="rounded-full border border-line px-4 py-2 text-sm font-semibold transition hover:bg-surface">Offer detail</Link>
+                  <Link href={path.links.redemptionLink} className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-strong">{path.links.redemptionLabel}</Link>
                 </div>
               </div>
             ))}
@@ -63,4 +59,3 @@ function Metric({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-

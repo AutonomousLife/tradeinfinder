@@ -1,4 +1,4 @@
-import { devices, merchants, offers } from "@/lib/seed-data";
+﻿import { devices, merchants, offers } from "@/lib/seed-data";
 
 export function getSearchSuggestions(query: string) {
   const needle = query.toLowerCase().trim();
@@ -12,14 +12,8 @@ export function getSearchSuggestions(query: string) {
   }
 
   return {
-    devices: devices.filter((device) =>
-      `${device.brand} ${device.model}`.toLowerCase().includes(needle),
-    ),
-    merchants: merchants.filter((merchant) =>
-      merchant.name.toLowerCase().includes(needle),
-    ),
-    offers: offers.filter((offer) =>
-      `${offer.targetDevice} ${offer.slug}`.toLowerCase().includes(needle),
-    ),
+    devices: devices.filter((device) => `${device.brand} ${device.model}`.toLowerCase().includes(needle)),
+    merchants: merchants.filter((merchant) => merchant.name.toLowerCase().includes(needle)),
+    offers: offers.filter((offer) => `${offer.slug} ${offer.valueType} ${offer.storeId}`.toLowerCase().includes(needle)),
   };
 }

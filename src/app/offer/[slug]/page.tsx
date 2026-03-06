@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { OfferDetail } from "@/components/offer-detail";
@@ -14,16 +14,15 @@ export async function generateStaticParams() {
   return offers.map((offer) => ({ slug: offer.slug }));
 }
 
-export async function generateMetadata({
-  params,
-}: OfferPageProps): Promise<Metadata> {
+export async function generateMetadata({ params }: OfferPageProps): Promise<Metadata> {
   const { slug } = await params;
   const model = getOfferPageModel(slug);
   if (!model) return {};
 
+  const target = model.offer.purchaseCreditTargetOptional ?? model.offer.targetDeviceOptional ?? "compatible phones";
   return {
-    title: `${model.offer.targetDevice} trade-in offer`,
-    description: `${model.offer.merchant.name} trade-in offer for ${model.offer.targetDevice} with requirements, accepted devices, and confidence notes.`,
+    title: `${model.offer.merchant.name} trade-in offer`,
+    description: `${model.offer.merchant.name} trade-in offer for ${target} with confidence notes and accepted devices.`,
   };
 }
 

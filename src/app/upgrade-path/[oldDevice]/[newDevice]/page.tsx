@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { ComparisonBoard } from "@/components/comparison-board";
@@ -12,45 +12,27 @@ type UpgradePathPageProps = {
 };
 
 export async function generateStaticParams() {
-  return topUpgradeComparisons.map((comparison) => ({
-    oldDevice: comparison.oldDeviceSlug,
-    newDevice: comparison.newDeviceSlug,
-  }));
+  return topUpgradeComparisons.map((comparison) => ({ oldDevice: comparison.oldDeviceSlug, newDevice: comparison.newDeviceSlug }));
 }
 
-export async function generateMetadata({
-  params,
-}: UpgradePathPageProps): Promise<Metadata> {
+export async function generateMetadata({ params }: UpgradePathPageProps): Promise<Metadata> {
   const { oldDevice, newDevice } = await params;
   return {
     title: `Best upgrade path from ${oldDevice} to ${newDevice}`,
-    description: `Compare direct, low-risk, and arbitrage upgrade paths from ${oldDevice} to ${newDevice}.`,
+    description: `Compare simple upgrade paths from ${oldDevice} to ${newDevice}.`,
   };
 }
 
 export default async function UpgradePathPage({ params }: UpgradePathPageProps) {
   const { oldDevice, newDevice } = await params;
+  if (!hasDeviceSlug(oldDevice) || !hasDeviceSlug(newDevice)) notFound();
 
-  if (!hasDeviceSlug(oldDevice) || !hasDeviceSlug(newDevice)) {
-    notFound();
-  }
-
-  const model = buildUpgradeOptimizer({
-    currentDeviceSlug: oldDevice,
-    targetDeviceSlug: newDevice,
-    condition: "good",
-    allowIntermediate: true,
-  });
-
+  const model = buildUpgradeOptimizer({ currentDeviceSlug: oldDevice, targetDeviceSlug: newDevice, condition: "good" });
   if (!model.boards.length) notFound();
 
   return (
     <PageShell className="gap-10 pb-24 pt-10">
-      <SectionHeading
-        eyebrow="Programmatic upgrade page"
-        title={`Best upgrade path from ${model.inputs.currentDevice.model} to ${model.inputs.targetDevice.model}`}
-        description="A comparison of ranked upgrade outcomes, effective cost, confidence, and caveats."
-      />
+      <SectionHeading eyebrow="Programmatic upgrade page" title={`Best upgrade path from ${model.inputs.currentDevice.model} to ${model.inputs.targetDevice.model}`} description="A comparison of ranked upgrade outcomes, effective cost, confidence, and simplicity." />
       <ComparisonBoard scenarios={model.boards} />
     </PageShell>
   );

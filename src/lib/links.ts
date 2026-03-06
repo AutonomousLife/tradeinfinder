@@ -1,22 +1,18 @@
-import type { AcquisitionSource, Merchant, RankedPath } from "@/lib/schema";
+﻿import type { AcquisitionSource, Merchant, RankedPath } from "@/lib/schema";
 
 export function buildPathLinks(args: {
   acquisition: AcquisitionSource | null;
   merchant: Merchant;
   targetDeviceSlug: string;
 }): RankedPath["links"] {
-  const acquisitionLabel = args.acquisition
-    ? `Buy on ${sourceLabel(args.acquisition.sourceType)}`
-    : undefined;
-  const acquisitionLink = args.acquisition?.url;
-  const acquisitionAffiliateLink = args.acquisition?.affiliateUrl ?? undefined;
-  const redemptionLink = `${args.merchant.siteUrl}/`;
+  const acquisitionLabel = args.acquisition ? `Buy on ${sourceLabel(args.acquisition.sourceType)}` : undefined;
+  const acquisitionLink = args.acquisition?.affiliateUrl ?? args.acquisition?.url;
 
   return {
     acquisitionLink,
-    acquisitionAffiliateLink,
+    acquisitionAffiliateLink: args.acquisition?.affiliateUrl ?? undefined,
     acquisitionLabel,
-    redemptionLink,
+    redemptionLink: `${args.merchant.siteUrl}/`,
     redemptionAffiliateLink: undefined,
     redemptionLabel: redemptionLabel(args.merchant.name, args.targetDeviceSlug),
   };
@@ -26,13 +22,14 @@ function sourceLabel(sourceType: AcquisitionSource["sourceType"]) {
   if (sourceType === "ebay") return "eBay";
   if (sourceType === "amazon") return "Amazon";
   if (sourceType === "bestbuy") return "Best Buy";
+  if (sourceType === "marketplace") return "Marketplace";
   return "seller";
 }
 
 function redemptionLabel(merchantName: string, targetDeviceSlug: string) {
-  if (targetDeviceSlug.includes("iphone")) {
-    return `Upgrade at ${merchantName}`;
+  if (targetDeviceSlug.includes("iphone") || targetDeviceSlug.includes("pixel") || targetDeviceSlug.includes("galaxy")) {
+    return `See ${merchantName} checkout`;
   }
 
-  return `Trade at ${merchantName}`;
+  return `Trade in at ${merchantName}`;
 }
