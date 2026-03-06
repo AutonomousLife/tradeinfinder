@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { FinderResults } from "@/components/finder-results";
@@ -23,7 +23,7 @@ export async function generateMetadata({
   const { device, merchant } = await params;
   return {
     title: `Trade in ${device} at ${merchant}`,
-    description: `Compare the best trade-in path for ${device} at ${merchant}.`,
+    description: `Compare the best simple trade-in path for ${device} at ${merchant}.`,
   };
 }
 
@@ -34,12 +34,16 @@ export default async function TradeInLanding({ params }: TradeInPageProps) {
     notFound();
   }
 
-  const model = buildTradeInFinder({
+  const merchantModel = buildTradeInFinder({
     currentDeviceSlug: device,
-    targetDeviceSlug: "iphone-16-pro-256",
     condition: "good",
     merchantSlug: merchant,
   });
+  const fallbackModel = buildTradeInFinder({
+    currentDeviceSlug: device,
+    condition: "good",
+  });
+  const model = merchantModel.paths.length ? merchantModel : fallbackModel;
 
   if (!model.paths.length) notFound();
 
@@ -47,8 +51,10 @@ export default async function TradeInLanding({ params }: TradeInPageProps) {
     <PageShell className="gap-10 pb-24 pt-10">
       <SectionHeading
         eyebrow="Programmatic trade-in page"
-        title={`Trade in ${model.inputs.currentDevice.brand} ${model.inputs.currentDevice.model} at ${model.inputs.merchant?.name ?? merchant}`}
-        description="SEO-friendly landing page with ranked results, caveats, and upgrade suggestions."
+        title={`Trade in ${model.inputs.currentDevice.brand} ${model.inputs.currentDevice.model}${model.inputs.merchant ? ` at ${model.inputs.merchant.name}` : ""}`}
+        description={merchantModel.paths.length
+          ? "Merchant-specific simple trade-in results with confidence and freshness signals."
+          : `No current seeded trade-in value was available for ${merchant}. Showing the best available alternatives instead.`}
       />
       <FinderResults model={model} />
     </PageShell>

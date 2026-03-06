@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { FinderResults } from "@/components/finder-results";
@@ -21,7 +21,7 @@ export async function generateMetadata({
   const { device } = await params;
   return {
     title: `Best trade-in for ${device}`,
-    description: `Compare the best trade-in value and strongest upgrade deals for ${device}.`,
+    description: `Compare the best direct trade-in value and strongest store options for ${device}.`,
   };
 }
 
@@ -34,7 +34,6 @@ export default async function BestTradeInPage({ params }: BestTradeInPageProps) 
 
   const model = buildTradeInFinder({
     currentDeviceSlug: device,
-    targetDeviceSlug: "iphone-16-pro-256",
     condition: "good",
   });
 
@@ -45,7 +44,7 @@ export default async function BestTradeInPage({ params }: BestTradeInPageProps) 
       <SectionHeading
         eyebrow="Best trade-in"
         title={`Best trade-in value for ${model.inputs.currentDevice.brand} ${model.inputs.currentDevice.model}`}
-        description="Ranked direct and promotional outcomes with requirement tags and confidence scoring."
+        description="Ranked direct trade-in outcomes with source, freshness, confidence, and resale context." 
       />
       <FinderResults model={model} />
     </PageShell>

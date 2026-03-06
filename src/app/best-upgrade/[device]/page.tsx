@@ -11,6 +11,13 @@ type BestUpgradePageProps = {
   params: Promise<{ device: string }>;
 };
 
+function defaultTargetFor(device: string) {
+  if (device.includes("iphone")) return "iphone-16-pro-256";
+  if (device.includes("galaxy")) return "galaxy-s24-ultra-256";
+  if (device.includes("pixel")) return "pixel-9-pro-256";
+  return "iphone-16-128";
+}
+
 export async function generateStaticParams() {
   return devices.map((device) => ({ device: device.slug }));
 }
@@ -27,12 +34,12 @@ export default async function BestUpgradePage({ params }: BestUpgradePageProps) 
   const { device } = await params;
   if (!hasDeviceSlug(device)) notFound();
 
-  const model = buildUpgradeOptimizer({ currentDeviceSlug: device, targetDeviceSlug: "iphone-16-pro-256", condition: "good" });
-  if (!model.boards.length) notFound();
+  const model = buildUpgradeOptimizer({ currentDeviceSlug: device, targetDeviceSlug: defaultTargetFor(device), condition: "good" });
+  if (!model.boards.some((board) => board.paths.length > 0)) notFound();
 
   return (
     <PageShell className="gap-10 pb-24 pt-10">
-      <SectionHeading eyebrow="Best upgrade" title={`Best upgrade path from ${model.inputs.currentDevice.brand} ${model.inputs.currentDevice.model}`} description="Simple store paths ranked by usable value, confidence, and resulting upgrade cost." />
+      <SectionHeading eyebrow="Best upgrade" title={`Best upgrade path from ${model.inputs.currentDevice.brand} ${model.inputs.currentDevice.model}`} description="Simple store paths ranked by usable value, freshness, confidence, and resulting upgrade cost." />
       <ComparisonBoard scenarios={model.boards} />
     </PageShell>
   );
