@@ -1,65 +1,252 @@
-import Image from "next/image";
+import {
+  ArrowRight,
+  BadgeDollarSign,
+  CircleDollarSign,
+  Radar,
+  ShieldCheck,
+} from "lucide-react";
+import Link from "next/link";
 
-export default function Home() {
+import { ChartPanel } from "@/components/chart-panel";
+import { ComparisonBoard } from "@/components/comparison-board";
+import { PageShell } from "@/components/page-shell";
+import { PathCard } from "@/components/path-card";
+import { QuickStartForm } from "@/components/quick-start-form";
+import { SectionHeading } from "@/components/section-heading";
+import { StatCard } from "@/components/stat-card";
+import { buildHomepageSnapshot } from "@/lib/engine";
+import { formatCurrency, formatPercent, formatRelativeDate } from "@/lib/format";
+
+export default function HomePage() {
+  const snapshot = buildHomepageSnapshot();
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <PageShell className="gap-20 pb-24 pt-8">
+      <section className="grid gap-8 lg:grid-cols-[1.18fr_0.82fr] lg:items-stretch">
+        <div className="card relative overflow-hidden rounded-[2rem] p-8 sm:p-10">
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-accent via-gold to-accent" />
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="pill rounded-full px-4 py-2 font-mono text-xs uppercase tracking-[0.22em] text-muted">
+              Buy - Trade - Save
+            </span>
+            <span className="rounded-full bg-accent-soft px-3 py-1 text-xs font-semibold text-accent">
+              Last refreshed {formatRelativeDate(snapshot.freshness)}
+            </span>
+          </div>
+          <h1 className="mt-6 max-w-4xl text-balance text-5xl font-semibold tracking-[-0.04em] sm:text-6xl">
+            Find the real best phone trade-in path, not the prettiest promo.
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="mt-5 max-w-3xl text-lg leading-8 text-muted sm:text-xl">
+            TradeInFinder ranks direct trade-ins, upgrade promos, and arbitrage
+            paths by true net value, bill-credit drag, lock-in risk, and offer
+            confidence so you can see what actually saves money.
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+          <div className="mt-8 grid gap-4 sm:grid-cols-3">
+            <StatCard
+              label="Best net uplift"
+              value={formatCurrency(snapshot.heroStats.bestSpread)}
+              hint="Seeded from current trade-in and buy-cost data"
+              icon={BadgeDollarSign}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <StatCard
+              label="Tracked offers"
+              value={String(snapshot.heroStats.offerCount)}
+              hint="Carriers, OEMs, retailers, and marketplaces"
+              icon={Radar}
+            />
+            <StatCard
+              label="Verified coverage"
+              value={formatPercent(snapshot.heroStats.avgConfidence)}
+              hint="Confidence-weighted quality score"
+              icon={ShieldCheck}
+            />
+          </div>
+          <div className="mt-8 flex flex-wrap gap-4">
+            <Link
+              href="/search"
+              className="rounded-full bg-accent px-6 py-3 text-sm font-semibold text-white transition hover:bg-accent-strong"
+            >
+              Open trade-in finder
+            </Link>
+            <Link
+              href="/upgrade"
+              className="rounded-full border border-line px-6 py-3 text-sm font-semibold transition hover:bg-white/60"
+            >
+              See upgrade paths
+            </Link>
+          </div>
+          <div className="mt-10 grid gap-4 rounded-[1.5rem] border border-line bg-[#fffaf1]/70 p-5 lg:grid-cols-[1fr_auto_1fr_auto_1fr] lg:items-center">
+            <div>
+              <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted">
+                Buy
+              </p>
+              <p className="mt-2 text-lg font-semibold">
+                {snapshot.examplePath.acquisition?.title ?? "Use your own phone"}
+              </p>
+              <p className="mt-1 text-sm text-muted">
+                {snapshot.examplePath.acquisition
+                  ? `${formatCurrency(snapshot.examplePath.acquisition.estimatedPrice)} estimated`
+                  : "No intermediate device required"}
+              </p>
+            </div>
+            <ArrowRight className="hidden text-muted lg:block" />
+            <div>
+              <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted">
+                Trade
+              </p>
+              <p className="mt-2 text-lg font-semibold">
+                {snapshot.examplePath.merchant.name}
+              </p>
+              <p className="mt-1 text-sm text-muted">
+                {formatCurrency(snapshot.examplePath.offer.tradeInValue)}{" "}
+                {snapshot.examplePath.offer.tradeInType.replace("_", " ")}
+              </p>
+            </div>
+            <ArrowRight className="hidden text-muted lg:block" />
+            <div>
+              <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted">
+                Save
+              </p>
+              <p className="mt-2 text-lg font-semibold">
+                {formatCurrency(snapshot.examplePath.netValue)}
+              </p>
+              <p className="mt-1 text-sm text-muted">
+                Effective value after cost and caveats
+              </p>
+            </div>
+          </div>
         </div>
-      </main>
-    </div>
+        <QuickStartForm
+          devices={snapshot.devices}
+          merchants={snapshot.merchants}
+          defaultCurrentDevice="iphone-13-128"
+          defaultTargetDevice="iphone-16-pro-256"
+        />
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-4">
+        {snapshot.trustItems.map((item) => (
+          <div key={item.label} className="card rounded-[1.5rem] p-5">
+            <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted">
+              {item.label}
+            </p>
+            <p className="mt-3 text-lg font-semibold">{item.value}</p>
+            <p className="mt-1 text-sm text-muted">{item.copy}</p>
+          </div>
+        ))}
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-[1fr_0.96fr]">
+        <div>
+          <SectionHeading
+            eyebrow="How it works"
+            title="The ranking engine prices lock-in, not just headline credit."
+            description="Each path gets a weighted score across real net value, speed of value, merchant trust, complexity, and confidence. Promotions with 36 months of bill credits can still win, but only when the math does."
+          />
+          <div className="mt-6 grid gap-4 sm:grid-cols-3">
+            {snapshot.methodologySteps.map((step) => (
+              <div key={step.title} className="card rounded-[1.5rem] p-5">
+                <p className="font-mono text-xs uppercase tracking-[0.2em] text-accent">
+                  {step.kicker}
+                </p>
+                <h3 className="mt-3 text-lg font-semibold">{step.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-muted">{step.copy}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <ChartPanel
+          title="Instant value vs delayed promo value"
+          description="Weighted comparison across the current top ranked upgrade paths."
+          data={snapshot.instantVsDelayedChart}
+        />
+      </section>
+
+      <section>
+        <SectionHeading
+          eyebrow="Best deals right now"
+          title="Current offers with the best net trade-in value"
+          description="These rankings weight direct value, bill-credit drag, merchant trust, and hidden requirements."
+        />
+        <div className="mt-6 grid gap-5 lg:grid-cols-3">
+          {snapshot.bestDeals.map((path) => (
+            <PathCard key={path.slug} path={path} />
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <SectionHeading
+          eyebrow="Best upgrade paths"
+          title="Upgrade recommendations that show the real cost to move up."
+          description="Direct upgrade, low-risk, and arbitrage options are split so you can choose what matters: speed, simplicity, or maximum spread."
+        />
+        <ComparisonBoard scenarios={snapshot.upgradeBoards} />
+      </section>
+
+      <section>
+        <SectionHeading
+          eyebrow="Arbitrage now"
+          title="Trade-in spreads where a cheaper used phone beats using your current one."
+          description="These are the most attractive buy-and-trade opportunities in the seeded dataset."
+        />
+        <div className="mt-6 grid gap-5 lg:grid-cols-3">
+          {snapshot.arbitrage.map((path) => (
+            <PathCard key={path.slug} path={path} />
+          ))}
+        </div>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <div className="card rounded-[2rem] p-8">
+          <SectionHeading
+            eyebrow="Best paths"
+            title="Why the top result ranks first"
+            description="The engine exposes the tradeoff instead of hiding it."
+          />
+          <div className="mt-6 space-y-4">
+            {snapshot.whyItRanksFirst.map((item) => (
+              <div
+                key={item.label}
+                className="rounded-[1.2rem] border border-line bg-white/65 p-4"
+              >
+                <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted">
+                  {item.label}
+                </p>
+                <p className="mt-2 text-base text-foreground">{item.copy}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="card rounded-[2rem] p-8">
+          <div className="flex items-center gap-3">
+            <CircleDollarSign className="h-5 w-5 text-accent" />
+            <h2 className="text-2xl font-semibold tracking-tight">
+              Built for transparent monetization
+            </h2>
+          </div>
+          <p className="mt-4 text-base leading-7 text-muted">
+            Acquisition and redemption links use an affiliate-ready abstraction
+            that supports direct links, referral links, and future tracking
+            parameters. No merchant appears higher just because it monetizes
+            better.
+          </p>
+          <div className="mt-6 grid gap-4">
+            {snapshot.linkSystem.map((item) => (
+              <div key={item.title} className="rounded-[1.3rem] border border-line p-4">
+                <h3 className="font-semibold">{item.title}</h3>
+                <p className="mt-1 text-sm leading-6 text-muted">{item.copy}</p>
+              </div>
+            ))}
+          </div>
+          <Link
+            href="/methodology"
+            className="mt-6 inline-flex rounded-full border border-line px-5 py-3 text-sm font-semibold transition hover:bg-white/60"
+          >
+            Read methodology
+          </Link>
+        </div>
+      </section>
+    </PageShell>
   );
 }
