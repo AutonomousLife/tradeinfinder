@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { ComparisonBoard } from "@/components/comparison-board";
 import { PageShell } from "@/components/page-shell";
 import { SectionHeading } from "@/components/section-heading";
-import { buildUpgradeOptimizer } from "@/lib/engine";
+import { buildUpgradeOptimizer, hasDeviceSlug } from "@/lib/engine";
 import { topUpgradeComparisons } from "@/lib/seed-data";
 
 type UpgradePathPageProps = {
@@ -30,6 +30,11 @@ export async function generateMetadata({
 
 export default async function UpgradePathPage({ params }: UpgradePathPageProps) {
   const { oldDevice, newDevice } = await params;
+
+  if (!hasDeviceSlug(oldDevice) || !hasDeviceSlug(newDevice)) {
+    notFound();
+  }
+
   const model = buildUpgradeOptimizer({
     currentDeviceSlug: oldDevice,
     targetDeviceSlug: newDevice,

@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { ComparisonBoard } from "@/components/comparison-board";
 import { PageShell } from "@/components/page-shell";
 import { SectionHeading } from "@/components/section-heading";
-import { buildUpgradeOptimizer } from "@/lib/engine";
+import { buildUpgradeOptimizer, hasDeviceSlug } from "@/lib/engine";
 import { devices } from "@/lib/seed-data";
 
 type BestUpgradePageProps = {
@@ -27,6 +27,11 @@ export async function generateMetadata({
 
 export default async function BestUpgradePage({ params }: BestUpgradePageProps) {
   const { device } = await params;
+
+  if (!hasDeviceSlug(device)) {
+    notFound();
+  }
+
   const model = buildUpgradeOptimizer({
     currentDeviceSlug: device,
     targetDeviceSlug: "iphone-16-pro-256",

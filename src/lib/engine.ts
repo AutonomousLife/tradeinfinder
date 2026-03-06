@@ -53,9 +53,7 @@ function acquisitionForDevice(deviceSlug: string, condition: string) {
 
   return (
     acquisitionSources.find(
-      (source) =>
-        source.deviceId === device.id &&
-        (source.condition === condition || source.condition === "good"),
+      (source) => source.deviceId === device.id && source.condition === condition,
     ) ?? null
   );
 }
@@ -181,12 +179,20 @@ function rankPath(args: {
   };
 }
 
-function relevantOffers(currentDeviceSlug: string, targetDeviceSlug?: string, merchantSlug?: string) {
+function relevantOffers(
+  currentDeviceSlug: string,
+  condition: string,
+  targetDeviceSlug?: string,
+  merchantSlug?: string,
+) {
   return offers.filter((offer) => {
     const matchesDevice = offer.acceptedTradeInDevices.includes(currentDeviceSlug);
+    const matchesCondition = offer.acceptedConditions.includes(
+      condition as Offer["acceptedConditions"][number],
+    );
     const matchesTarget = targetDeviceSlug ? offer.targetDeviceSlug === targetDeviceSlug : true;
     const matchesMerchant = merchantSlug ? offer.merchantId === merchantSlug : true;
-    return matchesDevice && matchesTarget && matchesMerchant;
+    return matchesDevice && matchesCondition && matchesTarget && matchesMerchant;
   });
 }
 
@@ -210,7 +216,12 @@ function topPathsForDevice({
   const currentDevice = getDevice(currentDeviceSlug);
   const targetDevice = getDevice(targetDeviceSlug);
 
-  const paths = relevantOffers(currentDevice.slug, targetDevice.slug, merchantSlug).map((offer) =>
+  const paths = relevantOffers(
+    currentDevice.slug,
+    condition,
+    targetDevice.slug,
+    merchantSlug,
+  ).map((offer) =>
     rankPath({
       currentDevice,
       targetDevice,
@@ -226,7 +237,10 @@ function topPathsForDevice({
         .filter((offer) => {
           const matchesTarget = offer.targetDeviceSlug === targetDevice.slug;
           const matchesMerchant = merchantSlug ? offer.merchantId === merchantSlug : true;
-          return matchesTarget && matchesMerchant;
+          const matchesCondition = offer.acceptedConditions.includes(
+            condition as Offer["acceptedConditions"][number],
+          );
+          return matchesTarget && matchesMerchant && matchesCondition;
         })
         .flatMap((offer) =>
           offer.acceptedTradeInDevices.map((acceptedSlug) => {
@@ -248,6 +262,14 @@ function topPathsForDevice({
     : [];
 
   return sortPaths([...paths, ...arbitragePaths]);
+}
+
+export function hasDeviceSlug(slug: string) {
+  return devices.some((device) => device.slug === slug);
+}
+
+export function hasMerchantSlug(slug: string) {
+  return merchants.some((merchant) => merchant.slug === slug);
 }
 
 export function buildHomepageSnapshot() {
@@ -664,7 +686,11 @@ export function getDevicePageModel(slug: string): DevicePageModel | null {
   if (!device) return null;
 
   const paths = offers
-    .filter((offer) => offer.acceptedTradeInDevices.includes(device.slug))
+    .filter(
+      (offer) =>
+        offer.acceptedTradeInDevices.includes(device.slug) &&
+        offer.acceptedConditions.includes("good"),
+    )
     .map((offer) =>
       rankPath({
         currentDevice: device,
@@ -699,7 +725,7 @@ export function getMerchantPageModel(slug: string): MerchantPageModel | null {
   if (!merchant) return null;
 
   const paths = offers
-    .filter((offer) => offer.merchantId === merchant.id)
+    .filter((offer) => offer.merchantId === merchant.id && offer.acceptedConditions.includes("good"))
     .map((offer) => {
       const currentDeviceSlug = offer.acceptedTradeInDevices[0];
       return rankPath({

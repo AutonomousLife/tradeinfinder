@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { FinderResults } from "@/components/finder-results";
 import { PageShell } from "@/components/page-shell";
 import { SectionHeading } from "@/components/section-heading";
-import { buildTradeInFinder } from "@/lib/engine";
+import { buildTradeInFinder, hasDeviceSlug, hasMerchantSlug } from "@/lib/engine";
 import { devices, merchants } from "@/lib/seed-data";
 
 type TradeInPageProps = {
@@ -29,6 +29,11 @@ export async function generateMetadata({
 
 export default async function TradeInLanding({ params }: TradeInPageProps) {
   const { device, merchant } = await params;
+
+  if (!hasDeviceSlug(device) || !hasMerchantSlug(merchant)) {
+    notFound();
+  }
+
   const model = buildTradeInFinder({
     currentDeviceSlug: device,
     targetDeviceSlug: "iphone-16-pro-256",
