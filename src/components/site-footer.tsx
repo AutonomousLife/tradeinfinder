@@ -12,11 +12,11 @@ const footerLinks = [
 export function SiteFooter() {
   return (
     <footer className="relative z-10 border-t border-line bg-panel/85 backdrop-blur-xl">
-      <div className="mx-auto grid max-w-7xl gap-8 px-6 py-10 md:grid-cols-[1.1fr_0.9fr]">
+      <div className="mx-auto grid max-w-7xl gap-6 px-6 py-10 md:grid-cols-[1.1fr_0.9fr]">
         <div>
           <p className="text-xl font-semibold tracking-tight">TradeInFinder</p>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">A clean, smart tool for finding the best real trade-in value for your phone.</p>
-          <p className="mt-4 max-w-2xl text-xs leading-6 text-muted">Some values are seeded or modeled until live ingestion is connected. Rankings prioritize usable value, confidence, and simplicity. Affiliate support exists, but it does not determine rank order.</p>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">A clean, practical tool for comparing trade-in value, resale value, and upgrade cost.</p>
+          <p className="mt-4 max-w-2xl text-xs leading-6 text-muted">Some values are estimates. Rankings favor usable value, confidence, and simplicity. Affiliate support never determines rank order.</p>
         </div>
         <div className="flex flex-wrap gap-5 md:justify-end">
           {footerLinks.map((item) => (
