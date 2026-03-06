@@ -1,5 +1,6 @@
 ﻿import Link from "next/link";
 
+import { BrandMark } from "@/components/brand-mark";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const navItems = [
@@ -15,12 +16,8 @@ export function SiteHeader() {
   return (
     <header className="relative z-20 border-b border-line/80 bg-panel/80 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
-        <Link href="/" className="flex items-center gap-3">
-          <div className="glow flex h-11 w-11 items-center justify-center rounded-2xl bg-linear-to-br from-accent to-[#3187ff] text-sm font-semibold text-slate-950">TF</div>
-          <div>
-            <p className="text-sm font-semibold tracking-tight">TradeInFinder</p>
-            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted">Simple phone trade-in intelligence</p>
-          </div>
+        <Link href="/" className="shrink-0">
+          <BrandMark />
         </Link>
         <nav className="hidden items-center gap-6 md:flex">
           {navItems.map((item) => (
