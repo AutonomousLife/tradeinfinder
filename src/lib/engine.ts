@@ -1,11 +1,13 @@
-import {
+﻿import {
   acquisitionSources,
+  alertSubscriptions,
   devices,
   merchants,
   offers,
   rawIngestRecords,
   savedScenarios,
   topUpgradeComparisons,
+  watchedItems,
 } from "@/lib/seed-data";
 import { formatCurrency } from "@/lib/format";
 import { buildPathLinks } from "@/lib/links";
@@ -30,6 +32,16 @@ import type {
 const delayedTypes = new Set(["bill_credit"]);
 const instantTypes = new Set(["cash", "store_credit", "instant"]);
 
+type PathSort = "best-net" | "highest-credit" | "lowest-risk" | "highest-confidence" | "instant";
+
+type PathFilterOptions = {
+  tradeInType?: Offer["tradeInType"] | "all";
+  instantOnly?: boolean;
+  excludeNewLine?: boolean;
+  sortBy?: PathSort;
+  unlockedOnly?: boolean;
+};
+
 function getDevice(slug: string) {
   return devices.find((device) => device.slug === slug) ?? devices[0];
 }
@@ -40,7 +52,7 @@ function getMerchant(slug?: string) {
 }
 
 function merchantById(id: string) {
-  return merchants.find((merchant) => merchant.id === id);
+  return merchants.find((merchant) => merchant.id === id) ?? merchants[0];
 }
 
 function deviceById(id: string) {
@@ -78,6 +90,7 @@ function lockInPenalty(offer: Offer) {
   if (offer.activationRequired) penalty += 30;
   if (offer.onlineOnly) penalty += 10;
   if (offer.inStoreOnly) penalty += 15;
+  if (offer.unlockedRequired) penalty += 18;
   return penalty;
 }
 
@@ -93,6 +106,7 @@ function biggestCaveat(offer: Offer) {
   }
   if (offer.eligiblePlanRequired) return "Requires an eligible premium plan.";
   if (offer.onlineOnly) return "Online-only stock and pricing can shift.";
+  if (offer.unlockedRequired) return "Unlocked device required.";
   return "Trade-in inspection can still affect final value.";
 }
 
@@ -116,9 +130,16 @@ function offerTags(offer: Offer) {
   if (offer.installmentRequired) tags.push("Installment required");
   if (offer.eligiblePlanRequired) tags.push("Eligible plan required");
   if (offer.onlineOnly) tags.push("Online only");
+  if (offer.inStoreOnly) tags.push("In-store only");
   if (offer.unlockedRequired) tags.push("Unlocked required");
 
   return tags;
+}
+
+function classifyRisk(score: number, offer: Offer) {
+  if (score > 0.72 && !offer.newLineRequired && !offer.installmentRequired) return "low" as const;
+  if (score > 0.52) return "medium" as const;
+  return "high" as const;
 }
 
 function rankPath(args: {
@@ -153,12 +174,12 @@ function rankPath(args: {
   return {
     slug: `${args.currentDevice.slug}-${args.offer.slug}${args.acquisition ? "-arb" : ""}`,
     label: `${args.merchant.name} -> ${args.targetDevice.model}`,
-    summary: `${formatCurrency(tradeInGross)} trade-in value against ${args.targetDevice.model}`,
+    summary: `${formatCurrency(tradeInGross)} effective trade-in value into ${args.targetDevice.model}`,
     reasonBadge: delayedTypes.has(args.offer.tradeInType)
-      ? "Best net value"
+      ? "Best Net Value"
       : instantTypes.has(args.offer.tradeInType)
-        ? "Best instant path"
-        : "Promo path",
+        ? "Best Instant Cash"
+        : "Best Promo Credit",
     device: args.currentDevice,
     merchant: args.merchant,
     offer: args.offer,
@@ -169,8 +190,13 @@ function rankPath(args: {
     confidence,
     trustAdjustedScore,
     biggestCaveat: biggestCaveat(args.offer),
-    explanation: `Net value starts at ${formatCurrency(tradeInGross)}, then subtracts acquisition cost, bill-credit drag, and requirement friction.`,
+    explanation: `Net value starts at ${formatCurrency(tradeInGross)}, then subtracts acquisition cost, bill-credit drag, and lock-in friction.`,
     tags: offerTags(args.offer),
+    riskLevel: classifyRisk(confidence, args.offer),
+    valueTimelineLabel:
+      args.offer.tradeInType === "bill_credit" && args.offer.months
+        ? `${args.offer.months} month timeline`
+        : "Immediate value",
     links: buildPathLinks({
       acquisition: args.acquisition,
       merchant: args.merchant,
@@ -196,8 +222,24 @@ function relevantOffers(
   });
 }
 
-function sortPaths(paths: RankedPath[]) {
-  return [...paths].sort((a, b) => b.trustAdjustedScore - a.trustAdjustedScore);
+function pathSortValue(path: RankedPath, sortBy: PathSort = "best-net") {
+  if (sortBy === "highest-credit") return path.offer.tradeInValue;
+  if (sortBy === "lowest-risk") return path.confidence * 100 - (path.offer.newLineRequired ? 20 : 0) - (path.offer.installmentRequired ? 15 : 0);
+  if (sortBy === "highest-confidence") return path.confidence * 100;
+  if (sortBy === "instant") return path.instantValue;
+  return path.trustAdjustedScore;
+}
+
+function applyPathFilters(paths: RankedPath[], options: PathFilterOptions = {}) {
+  const filtered = paths.filter((path) => {
+    if (options.tradeInType && options.tradeInType !== "all" && path.offer.tradeInType !== options.tradeInType) return false;
+    if (options.instantOnly && delayedTypes.has(path.offer.tradeInType)) return false;
+    if (options.excludeNewLine && path.offer.newLineRequired) return false;
+    if (options.unlockedOnly && !path.offer.unlockedRequired && path.merchant.type === "carrier") return false;
+    return true;
+  });
+
+  return [...filtered].sort((a, b) => pathSortValue(b, options.sortBy) - pathSortValue(a, options.sortBy));
 }
 
 function topPathsForDevice({
@@ -206,28 +248,25 @@ function topPathsForDevice({
   condition,
   merchantSlug,
   allowIntermediate = true,
+  filters,
 }: {
   currentDeviceSlug: string;
   targetDeviceSlug: string;
   condition: string;
   merchantSlug?: string;
   allowIntermediate?: boolean;
+  filters?: PathFilterOptions;
 }) {
   const currentDevice = getDevice(currentDeviceSlug);
   const targetDevice = getDevice(targetDeviceSlug);
 
-  const paths = relevantOffers(
-    currentDevice.slug,
-    condition,
-    targetDevice.slug,
-    merchantSlug,
-  ).map((offer) =>
+  const directPaths = relevantOffers(currentDevice.slug, condition, targetDevice.slug, merchantSlug).map((offer) =>
     rankPath({
       currentDevice,
       targetDevice,
       offer,
       condition,
-      merchant: merchantById(offer.merchantId) ?? merchants[0],
+      merchant: merchantById(offer.merchantId),
       acquisition: null,
     }),
   );
@@ -246,13 +285,12 @@ function topPathsForDevice({
           offer.acceptedTradeInDevices.map((acceptedSlug) => {
             const acquisition = acquisitionForDevice(acceptedSlug, condition);
             if (!acquisition) return null;
-
             return rankPath({
               currentDevice: getDevice(acceptedSlug),
               targetDevice,
               offer,
               condition,
-              merchant: merchantById(offer.merchantId) ?? merchants[0],
+              merchant: merchantById(offer.merchantId),
               acquisition,
             });
           }),
@@ -261,7 +299,7 @@ function topPathsForDevice({
         .filter((path) => path.netValue > 100)
     : [];
 
-  return sortPaths([...paths, ...arbitragePaths]);
+  return applyPathFilters([...directPaths, ...arbitragePaths], filters);
 }
 
 export function hasDeviceSlug(slug: string) {
@@ -279,81 +317,68 @@ export function buildHomepageSnapshot() {
     condition: "good",
     allowIntermediate: true,
   });
-  const arbitrage = buildArbitrageExplorer().paths.slice(0, 3);
+  const arbitrageModel = buildArbitrageExplorer();
+  const trendingDevices = [...devices]
+    .sort((a, b) => b.trendScore - a.trendScore || b.searchVolume - a.searchVolume)
+    .slice(0, 6);
+  const expiringOffers = [...offers]
+    .sort((a, b) => new Date(a.endDate).getTime() - new Date(b.endDate).getTime())
+    .slice(0, 4)
+    .map((offer) => ({
+      slug: offer.slug,
+      merchant: merchantById(offer.merchantId).name,
+      target: offer.targetDevice,
+      ends: offer.endDate,
+      value: offer.tradeInValue,
+    }));
 
   return {
     freshness: "2026-03-05",
     devices,
     merchants: merchants.filter((merchant) => merchant.slug !== "ebay"),
     heroStats: {
-      bestSpread: Math.max(...buildArbitrageExplorer().paths.map((path) => path.netValue)),
+      bestSpread: Math.max(...arbitrageModel.paths.map((path) => path.netValue)),
       offerCount: offers.length,
       avgConfidence: offers.reduce((sum, offer) => sum + offer.confidenceScore, 0) / offers.length,
+      deviceCoverage: devices.length,
     },
     examplePath: heroPaths[0],
     trustItems: [
       { label: "Freshness", value: "Daily seeded refresh", copy: "Every offer shows last verified timing." },
       { label: "Sources", value: "Verified + estimated split", copy: "Confidence badges stay visible in every result." },
       { label: "Caveats", value: "Lock-in tags included", copy: "New line, plan, and installment rules are explicit." },
-      { label: "Links", value: "Affiliate-ready", copy: "Direct links work even before affiliate coverage is complete." },
+      { label: "Coverage", value: `${devices.length} phones modeled`, copy: "Large seeded catalog across Apple, Samsung, Google, and OnePlus." },
     ],
+    merchantStrip: merchants.filter((merchant) => merchant.slug !== "ebay").map((merchant) => merchant.name),
     methodologySteps: [
-      {
-        kicker: "01",
-        title: "Normalize every offer",
-        copy: "Devices, merchants, offers, buy sources, and raw ingest rows are modeled separately so the data layer stays sane as ingestion expands.",
-      },
-      {
-        kicker: "02",
-        title: "Adjust for value drag",
-        copy: "Bill credits, line requirements, premium-plan lock-in, and acquisition risk all reduce headline value before ranking.",
-      },
-      {
-        kicker: "03",
-        title: "Explain the winner",
-        copy: "The top path exposes the biggest caveat, confidence score, timestamps, and direct source CTAs so the recommendation remains auditable.",
-      },
+      { kicker: "01", title: "Price the trade-in honestly", copy: "The engine discounts delayed bill credits, new-line friction, and plan lock-in before ranking any path." },
+      { kicker: "02", title: "Compare direct and buy-first paths", copy: "Every result can include a cheap acquisition phone, a redemption merchant, and the true net spread." },
+      { kicker: "03", title: "Show why it won", copy: "Top paths expose confidence, freshness, and the main caveat so recommendations stay auditable." },
     ],
-    instantVsDelayedChart: heroPaths.slice(0, 4).map((path) => ({
-      label: path.merchant.name,
-      instant: path.instantValue,
-      delayed: path.netValue,
-    })),
+    instantVsDelayedChart: heroPaths.slice(0, 4).map((path) => ({ label: path.merchant.name, instant: path.instantValue, delayed: path.netValue })),
     bestDeals: heroPaths.slice(0, 3),
-    upgradeBoards: buildUpgradeOptimizer({
-      currentDeviceSlug: "iphone-13-128",
-      targetDeviceSlug: "iphone-16-pro-256",
-      condition: "good",
-      allowIntermediate: true,
-    }).boards,
-    arbitrage,
+    upgradeBoards: buildUpgradeOptimizer({ currentDeviceSlug: "iphone-13-128", targetDeviceSlug: "iphone-16-pro-256", condition: "good", allowIntermediate: true }).boards,
+    arbitrage: arbitrageModel.paths.slice(0, 3),
+    trendingDevices,
+    expiringOffers,
+    popularPaths: topUpgradeComparisons.map((comparison) => ({
+      slug: comparison.slug,
+      title: `${getDevice(comparison.oldDeviceSlug).model} -> ${getDevice(comparison.newDeviceSlug).model}`,
+    })),
     whyItRanksFirst: [
-      {
-        label: "Real net value",
-        copy: `${heroPaths[0].merchant.name} still wins after subtracting delay, plan lock-in, and expected friction.`,
-      },
-      {
-        label: "Confidence",
-        copy: `The path combines merchant trust and verification into a ${Math.round(heroPaths[0].confidence * 100)} confidence score.`,
-      },
-      {
-        label: "Caveat",
-        copy: heroPaths[0].biggestCaveat,
-      },
+      { label: "Real net value", copy: `${heroPaths[0].merchant.name} still wins after subtracting delay, plan lock-in, and expected friction.` },
+      { label: "Confidence", copy: `The path combines merchant trust and verification into a ${Math.round(heroPaths[0].confidence * 100)} confidence score.` },
+      { label: "Caveat", copy: heroPaths[0].biggestCaveat },
     ],
     linkSystem: [
-      {
-        title: "Acquisition links",
-        copy: "Buy-first scenarios keep direct and affiliate acquisition links separate so monetization can expand without changing ranking logic.",
-      },
-      {
-        title: "Redemption links",
-        copy: "Trade-in or upgrade CTAs can route to carrier, retailer, or OEM checkout pages with future tracking parameters added at the edge.",
-      },
-      {
-        title: "Fallback behavior",
-        copy: "When no affiliate program exists, the app still exposes a clean direct CTA and marks the merchant normally in the ranking engine.",
-      },
+      { title: "Acquisition links", copy: "Buy-first scenarios keep direct and affiliate acquisition links separate so monetization can expand without changing ranking logic." },
+      { title: "Redemption links", copy: "Trade-in or upgrade CTAs can route to carrier, retailer, or OEM checkout pages with future tracking parameters added later." },
+      { title: "Fallback behavior", copy: "When no affiliate program exists, the app still exposes a clean direct CTA and marks the merchant normally in the ranking engine." },
+    ],
+    differentiators: [
+      "Best net value instead of best headline promo.",
+      "Buy ? Trade ? Save flow with acquisition and redemption separated.",
+      "Confidence, freshness, and caveats shown inline rather than hidden.",
     ],
   };
 }
@@ -363,7 +388,11 @@ export function buildTradeInFinder(args: {
   targetDeviceSlug: string;
   condition: string;
   merchantSlug?: string;
-}): TradeInFinderModel {
+  tradeInType?: Offer["tradeInType"] | "all";
+  sortBy?: PathSort;
+  instantOnly?: boolean;
+  excludeNewLine?: boolean;
+}) : TradeInFinderModel {
   const currentDevice = getDevice(args.currentDeviceSlug);
   const targetDevice = getDevice(args.targetDeviceSlug);
   const merchant = getMerchant(args.merchantSlug);
@@ -373,6 +402,12 @@ export function buildTradeInFinder(args: {
     condition: args.condition,
     merchantSlug: merchant?.slug,
     allowIntermediate: true,
+    filters: {
+      tradeInType: args.tradeInType,
+      sortBy: args.sortBy,
+      instantOnly: args.instantOnly,
+      excludeNewLine: args.excludeNewLine,
+    },
   });
 
   const bestNet = paths[0];
@@ -380,12 +415,7 @@ export function buildTradeInFinder(args: {
   const bestPromo = paths.find((path) => path.offer.tradeInType === "bill_credit") ?? bestNet;
 
   return {
-    inputs: {
-      currentDevice,
-      targetDevice,
-      merchant,
-      condition: args.condition,
-    },
+    inputs: { currentDevice, targetDevice, merchant, condition: args.condition },
     summary: {
       bestNetValue: bestNet?.netValue ?? 0,
       bestNetLabel: bestNet?.merchant.name ?? "No result",
@@ -397,29 +427,13 @@ export function buildTradeInFinder(args: {
     },
     whyTopResult: bestNet
       ? [
-          {
-            label: "Net value",
-            copy: `${bestNet.merchant.name} lands at ${formatCurrency(bestNet.netValue)} after drag adjustments.`,
-          },
-          {
-            label: "Value timing",
-            copy:
-              bestNet.offer.tradeInType === "bill_credit"
-                ? `The value is delayed over ${bestNet.offer.months} months, but still ranks first on net math.`
-                : "This result realizes value faster than most promo paths.",
-          },
-          {
-            label: "Biggest caveat",
-            copy: bestNet.biggestCaveat,
-          },
+          { label: "Net value", copy: `${bestNet.merchant.name} lands at ${formatCurrency(bestNet.netValue)} after drag adjustments.` },
+          { label: "Value timing", copy: bestNet.offer.tradeInType === "bill_credit" ? `The value is delayed over ${bestNet.offer.months} months, but still ranks first on net math.` : "This result realizes value faster than most promo paths." },
+          { label: "Biggest caveat", copy: bestNet.biggestCaveat },
         ]
       : [],
     paths,
-    chart: paths.slice(0, 5).map((path) => ({
-      label: path.merchant.name,
-      instant: path.instantValue,
-      delayed: path.netValue,
-    })),
+    chart: paths.slice(0, 5).map((path) => ({ label: path.merchant.name, instant: path.instantValue, delayed: path.netValue })),
   };
 }
 
@@ -429,6 +443,9 @@ export function buildUpgradeOptimizer(args: {
   condition: string;
   merchantSlug?: string;
   allowIntermediate: boolean;
+  unlockedOnly?: boolean;
+  excludeNewLine?: boolean;
+  sortBy?: PathSort;
 }) {
   const paths = topPathsForDevice({
     currentDeviceSlug: args.currentDeviceSlug,
@@ -436,46 +453,27 @@ export function buildUpgradeOptimizer(args: {
     condition: args.condition,
     merchantSlug: args.merchantSlug,
     allowIntermediate: args.allowIntermediate,
+    filters: {
+      sortBy: args.sortBy,
+      excludeNewLine: args.excludeNewLine,
+      unlockedOnly: args.unlockedOnly,
+    },
   });
 
   const direct = paths.filter((path) => path.acquisition === null).slice(0, 3);
   const arbitrage = paths.filter((path) => path.acquisition !== null).slice(0, 3);
-  const lowRisk = [...paths]
-    .sort(
-      (a, b) =>
-        (a.offer.newLineRequired ? 1 : 0) - (b.offer.newLineRequired ? 1 : 0) ||
-        b.confidence - a.confidence,
-    )
-    .slice(0, 3);
+  const lowRisk = [...paths].sort((a, b) => pathSortValue(b, "lowest-risk") - pathSortValue(a, "lowest-risk")).slice(0, 3);
+  const instant = [...paths].sort((a, b) => b.instantValue - a.instantValue).slice(0, 3);
 
   const boards: UpgradeBoard[] = [
-    {
-      kicker: "Best direct path",
-      title: "Use your current phone directly",
-      description: "Best for simplicity if you do not want an intermediate acquisition step.",
-      paths: direct,
-    },
-    {
-      kicker: "Best arbitrage path",
-      title: "Buy-first trade-in spread",
-      description: "Best when you are willing to buy a cheaper trade-in phone before redeeming the offer.",
-      paths: arbitrage,
-    },
-    {
-      kicker: "Lowest risk path",
-      title: "Cleaner upgrade path",
-      description: "Best for avoiding new-line friction, low-confidence inventory, and excessive lock-in.",
-      paths: lowRisk,
-    },
+    { kicker: "Best direct path", title: "Use your current phone directly", description: "Best for simplicity if you do not want an intermediate acquisition step.", paths: direct },
+    { kicker: "Best arbitrage path", title: "Buy-first trade-in spread", description: "Best when you are willing to buy a cheaper trade-in phone before redeeming the offer.", paths: arbitrage },
+    { kicker: "Lowest risk path", title: "Cleaner upgrade path", description: "Best for avoiding new-line friction, low-confidence inventory, and excessive lock-in.", paths: lowRisk },
+    { kicker: "Best instant path", title: "Faster value realization", description: "Best when you care more about immediate usable value than maximum bill-credit headline value.", paths: instant },
   ].filter((board) => board.paths.length > 0);
 
   return {
-    inputs: {
-      currentDevice: getDevice(args.currentDeviceSlug),
-      targetDevice: getDevice(args.targetDeviceSlug),
-      merchant: getMerchant(args.merchantSlug),
-      condition: args.condition,
-    },
+    inputs: { currentDevice: getDevice(args.currentDeviceSlug), targetDevice: getDevice(args.targetDeviceSlug), merchant: getMerchant(args.merchantSlug), condition: args.condition },
     boards,
   };
 }
@@ -485,37 +483,22 @@ export function buildArbitrageExplorer(): ArbitrageExplorerModel {
     ["pixel-6a-128", "iphone-16-pro-256"],
     ["pixel-6a-128", "galaxy-s25-ultra-256"],
     ["pixel-7-128", "pixel-9-pro-256"],
-    ["iphone-13-128", "iphone-16-pro-256"],
+    ["iphone-12-128", "iphone-16-pro-max-256"],
+    ["galaxy-s21-128", "galaxy-s25-ultra-256"],
   ] as const;
 
-  const paths = sortPaths(
+  const paths = applyPathFilters(
     targetPairs.flatMap(([currentDeviceSlug, targetDeviceSlug]) =>
-      topPathsForDevice({
-        currentDeviceSlug,
-        targetDeviceSlug,
-        condition: "good",
-        allowIntermediate: true,
-      }).filter((path) => path.acquisition !== null),
+      topPathsForDevice({ currentDeviceSlug, targetDeviceSlug, condition: "good", allowIntermediate: true }).filter((path) => path.acquisition !== null),
     ),
-  ).slice(0, 6);
+    { sortBy: "best-net" },
+  ).slice(0, 9);
 
   return {
     summary: [
-      {
-        label: "Best spread",
-        value: formatCurrency(paths[0]?.netValue ?? 0),
-        copy: "Highest net value after buy cost and drag adjustments.",
-      },
-      {
-        label: "Average confidence",
-        value: `${Math.round((paths.reduce((sum, path) => sum + path.confidence, 0) / Math.max(paths.length, 1)) * 100)}%`,
-        copy: "Mix of merchant trust and acquisition-source confidence.",
-      },
-      {
-        label: "Tracked opportunities",
-        value: String(paths.length),
-        copy: "Only positive-spread scenarios survive ranking and filtering.",
-      },
+      { label: "Best spread", value: formatCurrency(paths[0]?.netValue ?? 0), copy: "Highest net value after buy cost and drag adjustments." },
+      { label: "Average confidence", value: `${Math.round((paths.reduce((sum, path) => sum + path.confidence, 0) / Math.max(paths.length, 1)) * 100)}%`, copy: "Mix of merchant trust and acquisition-source confidence." },
+      { label: "Tracked opportunities", value: String(paths.length), copy: "Only positive-spread scenarios survive ranking and filtering." },
     ],
     paths,
   };
@@ -524,50 +507,10 @@ export function buildArbitrageExplorer(): ArbitrageExplorerModel {
 export function buildDealsHub() {
   return {
     sections: [
-      {
-        eyebrow: "Top net value",
-        title: "Best direct trade-in deals",
-        description: "Top-ranked across all seeded offers.",
-        paths: topPathsForDevice({
-          currentDeviceSlug: "iphone-13-128",
-          targetDeviceSlug: "iphone-16-pro-256",
-          condition: "good",
-          allowIntermediate: true,
-        }).slice(0, 3),
-      },
-      {
-        eyebrow: "Apple",
-        title: "Best iPhone upgrade deals",
-        description: "Strongest routes into the current iPhone flagship target.",
-        paths: topPathsForDevice({
-          currentDeviceSlug: "iphone-13-128",
-          targetDeviceSlug: "iphone-16-pro-256",
-          condition: "good",
-          allowIntermediate: true,
-        }).slice(0, 3),
-      },
-      {
-        eyebrow: "Samsung",
-        title: "Best Samsung upgrade deals",
-        description: "Top Galaxy upgrade paths for carrier and retailer buyers.",
-        paths: topPathsForDevice({
-          currentDeviceSlug: "galaxy-s23-128",
-          targetDeviceSlug: "galaxy-s25-ultra-256",
-          condition: "good",
-          allowIntermediate: true,
-        }).slice(0, 3),
-      },
-      {
-        eyebrow: "Google",
-        title: "Best Pixel upgrade deals",
-        description: "Unlocked-friendly and promo-heavy Pixel options.",
-        paths: topPathsForDevice({
-          currentDeviceSlug: "pixel-7-128",
-          targetDeviceSlug: "pixel-9-pro-256",
-          condition: "good",
-          allowIntermediate: true,
-        }).slice(0, 3),
-      },
+      { eyebrow: "Top net value", title: "Best direct trade-in deals", description: "Top-ranked across all seeded offers.", paths: topPathsForDevice({ currentDeviceSlug: "iphone-13-128", targetDeviceSlug: "iphone-16-pro-256", condition: "good", allowIntermediate: true }).slice(0, 3) },
+      { eyebrow: "Apple", title: "Best iPhone upgrade deals", description: "Strongest routes into the current iPhone flagship target.", paths: topPathsForDevice({ currentDeviceSlug: "iphone-12-128", targetDeviceSlug: "iphone-16-pro-max-256", condition: "good", allowIntermediate: true }).slice(0, 3) },
+      { eyebrow: "Samsung", title: "Best Samsung upgrade deals", description: "Top Galaxy upgrade paths for carrier and retailer buyers.", paths: topPathsForDevice({ currentDeviceSlug: "galaxy-s23-128", targetDeviceSlug: "galaxy-s25-ultra-256", condition: "good", allowIntermediate: true }).slice(0, 3) },
+      { eyebrow: "Google", title: "Best Pixel upgrade deals", description: "Unlocked-friendly and promo-heavy Pixel options.", paths: topPathsForDevice({ currentDeviceSlug: "pixel-7-128", targetDeviceSlug: "pixel-9-pro-256", condition: "good", allowIntermediate: true }).slice(0, 3) },
     ],
   };
 }
@@ -575,85 +518,28 @@ export function buildDealsHub() {
 export function buildDashboardModel(): DashboardModel {
   return {
     summary: [
-      {
-        label: "Saved scenarios",
-        value: String(savedScenarios.length),
-        copy: "Seeded examples ready for persistence in Supabase.",
-      },
-      {
-        label: "Watched offers",
-        value: "5",
-        copy: "Placeholder watchlist rows for future alerts.",
-      },
-      {
-        label: "Recent searches",
-        value: "12",
-        copy: "Intended to sync to authenticated user history.",
-      },
+      { label: "Saved scenarios", value: String(savedScenarios.length), copy: "Seeded examples ready for persistence in Supabase." },
+      { label: "Watched items", value: String(watchedItems.length), copy: "Devices, merchants, offers, and paths ready for alerts." },
+      { label: "Alert subscriptions", value: String(alertSubscriptions.length), copy: "Foundation for email and watched-value notifications." },
     ],
-    savedScenarios: savedScenarios.map((scenario) => ({
-      id: scenario.id,
-      title: `${getDevice(scenario.currentDevice).model} -> ${getDevice(scenario.targetDevice).model}`,
-      subtitle: `Condition: ${scenario.condition}`,
-      summary: scenario.resultSnapshot,
-      status: "Watching",
-    })),
+    savedScenarios: savedScenarios.map((scenario) => ({ id: scenario.id, title: `${getDevice(scenario.currentDevice).model} -> ${getDevice(scenario.targetDevice).model}`, subtitle: `Condition: ${scenario.condition}`, summary: scenario.resultSnapshot, status: "Watching" })),
+    watchedItems: watchedItems.map((item) => ({ id: item.id, title: `${item.type}: ${item.referenceSlug}`, note: item.note, change: item.lastChangeSummary })),
     notificationHooks: [
-      {
-        title: "Watched device alerts",
-        copy: "Alert when the best net path for a saved phone changes by a meaningful threshold.",
-      },
-      {
-        title: "Merchant alerts",
-        copy: "Trigger when a preferred carrier or retailer adds a materially stronger promo or changes fine print.",
-      },
-      {
-        title: "Expiring offer alerts",
-        copy: "Surface offers nearing end date or turning stale due to missing verification.",
-      },
+      { title: "Watched device alerts", copy: "Alert when the best net path for a saved phone changes by a meaningful threshold." },
+      { title: "Merchant alerts", copy: "Trigger when a preferred carrier or retailer adds a materially stronger promo or changes fine print." },
+      { title: "Expiring offer alerts", copy: "Surface offers nearing end date or turning stale due to missing verification." },
     ],
+    alertSubscriptions: alertSubscriptions.map((subscription) => ({ label: subscription.type.replace("_", " "), status: subscription.status, scope: subscription.referenceSlug })),
   };
 }
 
 export function buildMethodologyModel(): MethodologyModel {
   return {
     sections: [
-      {
-        title: "Data sources",
-        copy: "The platform currently uses realistic seeded data split into normalized tables for devices, merchants, offers, acquisition sources, saved scenarios, and raw ingest records.",
-        points: [
-          "Offers show verified, estimated, or manual source labels rather than pretending every value is live.",
-          "Acquisition prices are seeded from marketplace or retailer-style comps to support buy-first arbitrage logic.",
-          "Raw ingest rows exist now so future scrapers and CSV imports have a place to land before promotion into production tables.",
-        ],
-      },
-      {
-        title: "Ranking engine",
-        copy: "Every path starts with headline trade-in value, then discounts for condition drag, bill-credit delay, merchant lock-in, and acquisition risk.",
-        points: [
-          "Instant cash and store credit keep more of their headline value because realization is immediate.",
-          "Bill-credit offers can still win if the spread is strong enough after 36-month drag is applied.",
-          "Merchant trust and confidence scores are positive signals but do not overpower net value.",
-        ],
-      },
-      {
-        title: "Affiliate transparency",
-        copy: "Links are abstracted so the product can add affiliate or referral monetization without changing ranking logic or biasing recommendations.",
-        points: [
-          "Every recommendation can include an acquisition CTA and a redemption CTA separately.",
-          "Direct links remain first-class when no affiliate program is available.",
-          "A production system would log click attribution independently from ranking decisions.",
-        ],
-      },
-      {
-        title: "What is seeded vs dynamic",
-        copy: "The UI is built like a real production app, but the data source is currently seeded and deterministic rather than a live ingest pipeline.",
-        points: [
-          "Seeded today: devices, merchants, offers, acquisition sources, saved scenarios, and raw ingest examples.",
-          "Dynamic-ready: route handlers, environment config, Supabase-friendly schema, and normalized query utilities.",
-          "Next production step: connect scheduled ingestion and verification jobs through Vercel Cron plus hosted storage.",
-        ],
-      },
+      { title: "Data sources", copy: "TradeInFinder currently uses realistic seeded data split into normalized tables for devices, merchants, offers, acquisition sources, saved scenarios, watched items, alert subscriptions, and raw ingest records.", points: ["Offers show verified, estimated, or manual source labels rather than pretending every value is live.", "Acquisition prices are seeded from marketplace and retailer-style comps to support buy-first arbitrage logic.", "Raw ingest rows exist now so future scrapers and CSV imports have a place to land before promotion into production tables."] },
+      { title: "Ranking engine", copy: "Every path starts with headline trade-in value, then discounts for condition drag, bill-credit delay, merchant lock-in, acquisition risk, and user preference filters.", points: ["Instant cash and store credit keep more of their headline value because realization is immediate.", "Bill-credit offers can still win if the spread is strong enough after 36-month drag is applied.", "Merchant trust and confidence scores are positive signals but do not overpower net value."] },
+      { title: "Affiliate transparency", copy: "Links are abstracted so the product can add affiliate or referral monetization without changing ranking logic or biasing recommendations.", points: ["Every recommendation can include an acquisition CTA and a redemption CTA separately.", "Direct links remain first-class when no affiliate program is available.", "A production system would log click attribution independently from ranking decisions."] },
+      { title: "Limitations", copy: "Seeded and manual values are useful for planning, but final trade-in outcomes still depend on condition inspection, carrier terms, and current merchant inventory.", points: ["Some retailer and marketplace values are modeled benchmarks rather than live inventory quotes.", "Bill-credit offers assume the user keeps service long enough to realize the full credit stream.", "The next production step is a Vercel-friendly ingest and verification pipeline backed by hosted Postgres storage."] },
     ],
   };
 }
@@ -661,16 +547,17 @@ export function buildMethodologyModel(): MethodologyModel {
 export function buildAdminModel(): AdminModel {
   return {
     summary: [
-      { label: "Devices", value: String(devices.length), copy: "Normalized device catalog." },
+      { label: "Devices", value: String(devices.length), copy: "Normalized device catalog across major phone families." },
       { label: "Merchants", value: String(merchants.length), copy: "Carrier, retailer, OEM, and marketplace rows." },
       { label: "Offers", value: String(offers.length), copy: "Current seeded trade-in offers." },
       { label: "Raw ingest", value: String(rawIngestRecords.length), copy: "Pipeline inspection records." },
     ],
     collections: [
-      { title: "Device CRUD", copy: "Add new devices, deprecate old models, and manage storage variants.", count: String(devices.length) },
+      { title: "Device CRUD", copy: "Add new devices, deprecate old models, and manage storage variants and trend metadata.", count: String(devices.length) },
       { title: "Merchant CRUD", copy: "Maintain trust scores, default link types, and notes.", count: String(merchants.length) },
       { title: "Offer CRUD", copy: "Track conditions, confidence, start/end dates, and fine print summaries.", count: String(offers.length) },
       { title: "Acquisition sources", copy: "Used-market pricing references for arbitrage evaluation.", count: String(acquisitionSources.length) },
+      { title: "Alert subscriptions", copy: "Retention hooks for watched-value and expiring-offer signals.", count: String(alertSubscriptions.length) },
     ],
     actions: [
       { title: "Confidence overrides", copy: "Manually lift or suppress offers when source quality changes faster than automation can catch." },
@@ -686,31 +573,14 @@ export function getDevicePageModel(slug: string): DevicePageModel | null {
   if (!device) return null;
 
   const paths = offers
-    .filter(
-      (offer) =>
-        offer.acceptedTradeInDevices.includes(device.slug) &&
-        offer.acceptedConditions.includes("good"),
-    )
-    .map((offer) =>
-      rankPath({
-        currentDevice: device,
-        targetDevice: getDevice(offer.targetDeviceSlug),
-        offer,
-        condition: "good",
-        merchant: merchantById(offer.merchantId) ?? merchants[0],
-        acquisition: null,
-      }),
-    )
+    .filter((offer) => offer.acceptedTradeInDevices.includes(device.slug) && offer.acceptedConditions.includes("good"))
+    .map((offer) => rankPath({ currentDevice: device, targetDevice: getDevice(offer.targetDeviceSlug), offer, condition: "good", merchant: merchantById(offer.merchantId), acquisition: null }))
     .sort((a, b) => b.trustAdjustedScore - a.trustAdjustedScore)
     .slice(0, 6);
 
   return {
     device,
-    chart: paths.slice(0, 5).map((path) => ({
-      label: path.merchant.name,
-      instant: path.instantValue,
-      delayed: path.netValue,
-    })),
+    chart: paths.slice(0, 5).map((path) => ({ label: path.merchant.name, instant: path.instantValue, delayed: path.netValue })),
     paths: paths.slice(0, 3),
     relatedLinks: [
       { label: "Best trade-in page", href: `/best-trade-in/${device.slug}` },
@@ -728,31 +598,16 @@ export function getMerchantPageModel(slug: string): MerchantPageModel | null {
     .filter((offer) => offer.merchantId === merchant.id && offer.acceptedConditions.includes("good"))
     .map((offer) => {
       const currentDeviceSlug = offer.acceptedTradeInDevices[0];
-      return rankPath({
-        currentDevice: getDevice(currentDeviceSlug),
-        targetDevice: getDevice(offer.targetDeviceSlug),
-        offer,
-        condition: "good",
-        merchant,
-        acquisition: null,
-      });
+      return rankPath({ currentDevice: getDevice(currentDeviceSlug), targetDevice: getDevice(offer.targetDeviceSlug), offer, condition: "good", merchant, acquisition: null });
     })
     .sort((a, b) => b.trustAdjustedScore - a.trustAdjustedScore)
     .slice(0, 3);
 
   return {
     merchant,
-    tags: [
-      merchant.type,
-      merchant.affiliateCapable ? "Affiliate-ready" : "Direct links only",
-      `${Math.round(merchant.trustScore * 100)} trust`,
-    ],
+    tags: [merchant.type, merchant.affiliateCapable ? "Affiliate-ready" : "Direct links only", `${Math.round(merchant.trustScore * 100)} trust`],
     paths,
-    rules: [
-      "Review condition eligibility carefully because final inspection can move devices between value tiers.",
-      merchant.notes,
-      "Treat headline bill-credit values as delayed value, not instant money.",
-    ],
+    rules: ["Review condition eligibility carefully because final inspection can move devices between value tiers.", merchant.notes, "Treat headline bill-credit values as delayed value, not instant money."],
     relatedLinks: [
       { label: "Search all results", href: "/search" },
       { label: "Methodology", href: "/methodology" },
@@ -764,36 +619,16 @@ export function getOfferPageModel(slug: string): OfferPageModel | null {
   const offer = offers.find((entry) => entry.slug === slug);
   if (!offer) return null;
 
-  const merchant = merchantById(offer.merchantId) ?? merchants[0];
+  const merchant = merchantById(offer.merchantId);
   const currentDeviceSlug = offer.acceptedTradeInDevices[0];
-  const primaryPath = rankPath({
-    currentDevice: getDevice(currentDeviceSlug),
-    targetDevice: getDevice(offer.targetDeviceSlug),
-    offer,
-    condition: "good",
-    merchant,
-    acquisition: acquisitionForDevice(currentDeviceSlug, "good"),
-  });
+  const primaryPath = rankPath({ currentDevice: getDevice(currentDeviceSlug), targetDevice: getDevice(offer.targetDeviceSlug), offer, condition: "good", merchant, acquisition: acquisitionForDevice(currentDeviceSlug, "good") });
 
   return {
-    offer: {
-      ...offer,
-      merchant,
-      confidenceLabel: `${Math.round(offer.confidenceScore * 100)} confidence`,
-    },
+    offer: { ...offer, merchant, confidenceLabel: `${Math.round(offer.confidenceScore * 100)} confidence` },
     tags: offerTags(offer),
-    creditTimeline:
-      offer.tradeInType === "bill_credit" && offer.months
-        ? `${offer.monthlyCreditAmount?.toFixed(2)} monthly for ${offer.months} months`
-        : "Immediate at checkout or after inspection",
+    creditTimeline: offer.tradeInType === "bill_credit" && offer.months ? `${offer.monthlyCreditAmount?.toFixed(2)} monthly for ${offer.months} months` : "Immediate at checkout or after inspection",
     acceptedDevices: offer.acceptedTradeInDevices.map((deviceSlug) => getDevice(deviceSlug).model).join(", "),
-    acquisitionSummary: acquisitionSources
-      .filter((source) =>
-        offer.acceptedTradeInDevices.includes(deviceById(source.deviceId)?.slug ?? ""),
-      )
-      .map((source) => `${source.title}: ${formatCurrency(source.estimatedPrice)}`)
-      .slice(0, 3)
-      .join(" | "),
+    acquisitionSummary: acquisitionSources.filter((source) => offer.acceptedTradeInDevices.includes(deviceById(source.deviceId)?.slug ?? "")).map((source) => `${source.title}: ${formatCurrency(source.estimatedPrice)}`).slice(0, 3).join(" | "),
     primaryPath,
   };
 }
@@ -808,11 +643,7 @@ export function getComparePageModel(slug: string): ComparePageModel | null {
   return {
     title: `Compare ${currentDevice.model} to ${targetDevice.model} upgrade paths`,
     description: "Direct, buy-first, and lower-risk upgrade outcomes ranked by effective cost, confidence, and caveat load.",
-    boards: buildUpgradeOptimizer({
-      currentDeviceSlug: currentDevice.slug,
-      targetDeviceSlug: targetDevice.slug,
-      condition: "good",
-      allowIntermediate: true,
-    }).boards,
+    boards: buildUpgradeOptimizer({ currentDeviceSlug: currentDevice.slug, targetDeviceSlug: targetDevice.slug, condition: "good", allowIntermediate: true }).boards,
   };
 }
+

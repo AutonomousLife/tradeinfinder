@@ -1,4 +1,4 @@
-import { Metadata } from "next";
+﻿import { Metadata } from "next";
 
 import { FinderResults } from "@/components/finder-results";
 import { PageShell } from "@/components/page-shell";
@@ -20,14 +20,28 @@ type SearchPageProps = {
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
   const resolved = (await searchParams) ?? {};
+  const tradeInType = getSearchParam(resolved.tradeInType, "all") as
+    | "all"
+    | "cash"
+    | "store_credit"
+    | "promo_credit"
+    | "bill_credit"
+    | "instant";
+  const sortBy = (getSearchParam(resolved.sortBy, "best-net") ?? "best-net") as
+    | "best-net"
+    | "highest-credit"
+    | "lowest-risk"
+    | "highest-confidence"
+    | "instant";
   const finder = buildTradeInFinder({
-    currentDeviceSlug:
-      getSearchParam(resolved.currentDevice, "iphone-13-128") ?? "iphone-13-128",
-    targetDeviceSlug:
-      getSearchParam(resolved.targetDevice, "iphone-16-pro-256") ??
-      "iphone-16-pro-256",
+    currentDeviceSlug: getSearchParam(resolved.currentDevice, "iphone-13-128") ?? "iphone-13-128",
+    targetDeviceSlug: getSearchParam(resolved.targetDevice, "iphone-16-pro-256") ?? "iphone-16-pro-256",
     condition: getSearchParam(resolved.condition, "good") ?? "good",
     merchantSlug: getSearchParam(resolved.merchant),
+    tradeInType,
+    sortBy,
+    instantOnly: getSearchParam(resolved.instantOnly) === "true",
+    excludeNewLine: getSearchParam(resolved.excludeNewLine) === "true",
   });
 
   return (
@@ -37,7 +51,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
         title="See the highest real value for your current phone."
         description="The finder separates instant cash, store credit, promotional trade-ins, and bill-credit offers so the top result is explainable instead of opaque."
       />
-      <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
+      <div className="grid gap-6 xl:grid-cols-[380px_1fr]">
         <QuickStartForm
           devices={devices}
           merchants={merchants}
@@ -45,6 +59,10 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
           defaultTargetDevice={finder.inputs.targetDevice.slug}
           defaultMerchant={finder.inputs.merchant?.slug}
           defaultCondition={finder.inputs.condition}
+          defaultSortBy={sortBy}
+          defaultTradeInType={tradeInType}
+          defaultInstantOnly={getSearchParam(resolved.instantOnly) === "true"}
+          defaultExcludeNewLine={getSearchParam(resolved.excludeNewLine) === "true"}
           mode="finder"
         />
         <FinderResults model={finder} />
@@ -52,3 +70,4 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     </PageShell>
   );
 }
+

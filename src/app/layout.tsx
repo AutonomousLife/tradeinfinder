@@ -1,10 +1,11 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { IBM_Plex_Mono, Manrope } from "next/font/google";
 import "./globals.css";
 
 import { Providers } from "@/components/providers";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { ThemeScript } from "@/components/theme-script";
 import { absoluteUrl, siteConfig } from "@/lib/site";
 
 const manrope = Manrope({
@@ -57,13 +58,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning data-theme="dark">
       <body
         className={`${manrope.variable} ${ibmPlexMono.variable} bg-background text-foreground antialiased`}
       >
+        <ThemeScript />
         <Providers>
           <div className="relative min-h-screen overflow-x-hidden">
-            <div className="pointer-events-none absolute inset-0 grid-lines opacity-45" />
+            <div className="pointer-events-none absolute inset-0 grid-lines opacity-70" />
             <SiteHeader />
             <main className="relative z-10">{children}</main>
             <SiteFooter />
@@ -73,3 +75,4 @@ export default function RootLayout({
     </html>
   );
 }
+

@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 
 export const conditionSchema = z.enum(["mint", "good", "fair", "cracked"]);
 export type Condition = z.infer<typeof conditionSchema>;
@@ -17,6 +17,9 @@ export const deviceSchema = z.object({
   supportedConditions: z.array(conditionSchema),
   deprecated: z.boolean(),
   notes: z.string(),
+  searchVolume: z.number().default(0),
+  trendScore: z.number().default(0),
+  carrierLockFriendly: z.boolean().default(true),
 });
 export type Device = z.infer<typeof deviceSchema>;
 
@@ -91,6 +94,25 @@ export const savedScenarioSchema = z.object({
 });
 export type SavedScenario = z.infer<typeof savedScenarioSchema>;
 
+export const watchedItemSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  type: z.enum(["device", "merchant", "offer", "path"]),
+  referenceSlug: z.string(),
+  note: z.string(),
+  lastChangeSummary: z.string(),
+});
+export type WatchedItem = z.infer<typeof watchedItemSchema>;
+
+export const alertSubscriptionSchema = z.object({
+  id: z.string(),
+  email: z.string().email(),
+  type: z.enum(["device_value", "merchant_offer", "expiring_offer", "arbitrage", "newsletter"]),
+  referenceSlug: z.string(),
+  status: z.enum(["active", "paused"]),
+});
+export type AlertSubscription = z.infer<typeof alertSubscriptionSchema>;
+
 export const rawIngestSchema = z.object({
   id: z.string(),
   sourceName: z.string(),
@@ -119,6 +141,8 @@ export type RankedPath = {
   biggestCaveat: string;
   explanation: string;
   tags: string[];
+  riskLevel?: "low" | "medium" | "high";
+  valueTimelineLabel?: string;
   links: {
     acquisitionLink?: string;
     acquisitionAffiliateLink?: string;
@@ -180,7 +204,14 @@ export type DashboardModel = {
     summary: string;
     status: string;
   }[];
+  watchedItems: {
+    id: string;
+    title: string;
+    note: string;
+    change: string;
+  }[];
   notificationHooks: { title: string; copy: string }[];
+  alertSubscriptions: { label: string; status: string; scope: string }[];
 };
 
 export type MethodologyModel = {
@@ -225,3 +256,4 @@ export type ComparePageModel = {
   description: string;
   boards: UpgradeBoard[];
 };
+
