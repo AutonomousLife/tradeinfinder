@@ -40,7 +40,7 @@ function redemptionLabel(merchantName: string, deviceSlug: string, targetDeviceS
 
 function internalRedemptionLink(deviceSlug: string, merchantSlug: string, targetDeviceSlug?: string) {
   if (targetDeviceSlug && targetDeviceSlug !== deviceSlug) {
-    return `/upgrade-path/${deviceSlug}/${targetDeviceSlug}`;
+    return `/upgrade-path/${deviceSlug}/${targetDeviceSlug}?merchant=${encodeURIComponent(merchantSlug)}`;
   }
 
   return `/trade-in/${deviceSlug}/${merchantSlug}`;
