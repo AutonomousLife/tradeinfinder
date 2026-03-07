@@ -1,37 +1,37 @@
-﻿@import "tailwindcss";
+@import "tailwindcss";
 
 :root {
-  --background: #08111a;
-  --surface: #0d1722;
-  --surface-strong: #111c29;
-  --panel: rgba(13, 22, 34, 0.8);
-  --panel-strong: rgba(15, 25, 38, 0.94);
-  --foreground: #eef4fb;
-  --muted: #8ea2b8;
-  --line: rgba(161, 189, 218, 0.14);
-  --accent: #78b7ff;
-  --accent-strong: #5b9bea;
-  --accent-soft: rgba(120, 183, 255, 0.12);
-  --gold: #e8b866;
-  --danger: #ef6a5f;
-  --shadow: 0 18px 42px rgba(2, 8, 18, 0.28);
+  --background: #0b0e12;
+  --surface: #11161d;
+  --surface-strong: #171d25;
+  --panel: rgba(17, 22, 29, 0.9);
+  --panel-strong: rgba(20, 26, 34, 0.98);
+  --foreground: #f1f3f6;
+  --muted: #98a2af;
+  --line: rgba(255, 255, 255, 0.1);
+  --accent: #9bc0ff;
+  --accent-strong: #7eaafb;
+  --accent-soft: rgba(155, 192, 255, 0.12);
+  --gold: #d0aa6e;
+  --danger: #d86a5d;
+  --shadow: 0 16px 42px rgba(0, 0, 0, 0.22);
 }
 
 :root[data-theme="light"] {
-  --background: #f3efe6;
-  --surface: #fffaf2;
-  --surface-strong: #fbf6ee;
-  --panel: rgba(255, 251, 243, 0.84);
-  --panel-strong: rgba(255, 251, 243, 0.96);
-  --foreground: #151924;
-  --muted: #617081;
-  --line: rgba(20, 26, 37, 0.11);
-  --accent: #316fbe;
-  --accent-strong: #265c9f;
-  --accent-soft: rgba(49, 111, 190, 0.12);
-  --gold: #d6a84f;
-  --danger: #b84b3f;
-  --shadow: 0 16px 36px rgba(31, 38, 48, 0.1);
+  --background: #f2efe8;
+  --surface: #fcfaf5;
+  --surface-strong: #f7f2ea;
+  --panel: rgba(252, 250, 245, 0.92);
+  --panel-strong: rgba(252, 250, 245, 0.98);
+  --foreground: #171b21;
+  --muted: #5f6975;
+  --line: rgba(23, 27, 33, 0.12);
+  --accent: #2e5fa8;
+  --accent-strong: #244d88;
+  --accent-soft: rgba(46, 95, 168, 0.1);
+  --gold: #bf8f48;
+  --danger: #ae4b3e;
+  --shadow: 0 14px 30px rgba(18, 20, 24, 0.08);
 }
 
 @theme inline {
@@ -63,19 +63,17 @@ html {
 body {
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(120, 183, 255, 0.08), transparent 26%),
-    radial-gradient(circle at top right, rgba(232, 184, 102, 0.06), transparent 22%),
-    linear-gradient(180deg, #09131f 0%, #08111a 48%, #060d15 100%);
+    radial-gradient(circle at top left, rgba(155, 192, 255, 0.05), transparent 22%),
+    linear-gradient(180deg, #0b0e12 0%, #0d1218 48%, #0b0f14 100%);
   color: var(--foreground);
   font-family: var(--font-manrope), sans-serif;
-  transition: background-color 240ms ease, color 240ms ease;
+  transition: background-color 180ms ease, color 180ms ease;
 }
 
 :root[data-theme="light"] body {
   background:
-    radial-gradient(circle at top left, rgba(49, 111, 190, 0.08), transparent 26%),
-    radial-gradient(circle at top right, rgba(214, 168, 79, 0.08), transparent 22%),
-    linear-gradient(180deg, #f8f5ee 0%, #f1ede3 38%, #f4f1e8 100%);
+    radial-gradient(circle at top left, rgba(46, 95, 168, 0.04), transparent 22%),
+    linear-gradient(180deg, #f4f1ea 0%, #f2efe8 42%, #ece8df 100%);
 }
 
 button,
@@ -91,21 +89,20 @@ a {
 }
 
 ::selection {
-  background: rgba(120, 183, 255, 0.22);
+  background: rgba(155, 192, 255, 0.22);
 }
 
 .card {
   border: 1px solid var(--line);
   background: linear-gradient(180deg, var(--panel-strong), var(--panel));
   box-shadow: var(--shadow);
-  backdrop-filter: blur(14px);
 }
 
 .grid-lines {
   background-image:
-    linear-gradient(to right, rgba(161, 189, 218, 0.04) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(161, 189, 218, 0.035) 1px, transparent 1px);
-  background-size: 34px 34px;
+    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 44px 44px;
 }
 
 .text-balance {
@@ -113,24 +110,22 @@ a {
 }
 
 .pill {
-  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
-  background: color-mix(in srgb, var(--panel-strong) 84%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 92%, transparent);
+  background: color-mix(in srgb, var(--surface-strong) 86%, transparent);
 }
 
 .glow {
-  box-shadow: 0 0 0 1px rgba(120, 183, 255, 0.06), 0 14px 36px rgba(120, 183, 255, 0.08);
+  box-shadow: var(--shadow);
 }
 
 .brand-mark {
-  background:
-    radial-gradient(circle at 20% 18%, rgba(120, 183, 255, 0.18), transparent 38%),
-    linear-gradient(180deg, rgba(17, 30, 46, 0.96), rgba(12, 22, 34, 0.92));
-  box-shadow: 0 10px 24px rgba(4, 10, 20, 0.22);
+  background: linear-gradient(180deg, rgba(24, 30, 39, 0.94), rgba(15, 20, 27, 0.94));
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.18);
 }
 
 .surface-input {
   border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--surface-strong) 88%, transparent);
+  background: color-mix(in srgb, var(--surface-strong) 92%, transparent);
   color: var(--foreground);
 }
 
@@ -139,13 +134,12 @@ a {
 }
 
 .panel-hover {
-  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
 }
 
 .panel-hover:hover {
-  transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
-  box-shadow: 0 20px 46px rgba(2, 8, 18, 0.32);
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--line));
+  box-shadow: 0 18px 30px rgba(0, 0, 0, 0.18);
 }
 
 .no-scrollbar {

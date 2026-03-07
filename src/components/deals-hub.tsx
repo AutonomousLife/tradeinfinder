@@ -1,26 +1,22 @@
-import { PathCard } from "@/components/path-card";
+import { StoreScorecard } from "@/components/store-scorecard";
 import type { DealsHubModel } from "@/lib/schema";
 
 export function DealsHub({ model }: { model: DealsHubModel }) {
   return (
-    <div className="grid gap-8">
+    <div className="grid gap-10">
       {model.sections.map((section) => (
-        <section key={section.title}>
-          <div className="mb-5">
-            <p className="font-mono text-xs uppercase tracking-[0.2em] text-accent">
-              {section.eyebrow}
-            </p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight">
-              {section.title}
-            </h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-              {section.description}
-            </p>
-          </div>
-          <div className="grid gap-5 lg:grid-cols-3">
-            {section.paths.map((path) => (
-              <PathCard key={path.slug} path={path} />
-            ))}
+        <section key={section.title} className="card rounded-[2rem] p-6 sm:p-8">
+          <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr]">
+            <div>
+              <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-accent">{section.eyebrow}</p>
+              <h2 className="mt-3 text-balance text-3xl font-semibold tracking-[-0.04em]">{section.title}</h2>
+              <p className="mt-4 max-w-xl text-base leading-7 text-muted">{section.description}</p>
+            </div>
+            <div>
+              {section.paths.map((path, index) => (
+                <StoreScorecard key={path.slug} path={path} rank={index + 1} />
+              ))}
+            </div>
           </div>
         </section>
       ))}

@@ -41,12 +41,14 @@ export function OfferDetail({ model }: { model: OfferPageModel }) {
           </div>
         </div>
         <div className="mt-6 flex flex-wrap gap-3">
-          <Link href={model.primaryPath.links.redemptionLink} className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-strong">{model.primaryPath.links.redemptionLabel}</Link>
           {model.primaryPath.links.redemptionAffiliateLink ? (
-            <a href={model.primaryPath.links.redemptionAffiliateLink} target="_blank" rel="noreferrer" className="rounded-full border border-line px-4 py-2 text-sm font-semibold transition hover:bg-surface">
+            <a href={model.primaryPath.links.redemptionAffiliateLink} target="_blank" rel="noreferrer" className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-strong">
               Open {model.primaryPath.merchant.name}
             </a>
-          ) : null}
+          ) : (
+            <Link href={model.primaryPath.links.redemptionLink} className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-strong">{model.primaryPath.links.redemptionLabel}</Link>
+          )}
+          <Link href={model.primaryPath.links.redemptionLink} className="rounded-full border border-line px-4 py-2 text-sm font-semibold transition hover:bg-surface">View in TradeInFinder</Link>
           <Link href={`/trade-in/${model.primaryPath.device.slug}/${model.primaryPath.merchant.slug}`} className="rounded-full border border-line px-4 py-2 text-sm font-semibold transition hover:bg-surface">View example device path</Link>
         </div>
       </section>
