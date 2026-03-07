@@ -1,7 +1,6 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 
 import { PathCard } from "@/components/path-card";
-import { formatPercent } from "@/lib/format";
 import type { SellVsTradeOption, TradeInFinderModel } from "@/lib/schema";
 
 export function FinderResults({ model }: { model: TradeInFinderModel }) {
@@ -22,24 +21,20 @@ export function FinderResults({ model }: { model: TradeInFinderModel }) {
 
   return (
     <div className="grid gap-6">
-      <section className="grid gap-4 md:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-3">
         <SummaryCard label="Best trade-in" value={model.summary.bestTradeInValue} hint={model.summary.bestTradeInLabel} />
         <SummaryCard label="Best resale" value={model.summary.bestResaleValue} hint={model.summary.bestResaleLabel} />
         <SummaryCard label="Best upgrade" value={model.summary.bestUpgradeValue} hint={model.summary.bestUpgradeLabel} />
-        <SummaryCard label="Confidence" value={formatPercent(model.summary.avgConfidence)} hint="Freshness and source weighted" />
       </section>
 
       <section className="card rounded-[2rem] p-6">
-        <div className="flex items-center justify-between gap-4">
+        <p className="font-mono text-xs uppercase tracking-[0.2em] text-accent">A. Best Direct Trade-In</p>
+        <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="font-mono text-xs uppercase tracking-[0.2em] text-accent">A. Best Direct Trade-In</p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight">Best stores right now</h2>
-            <p className="mt-2 text-sm leading-6 text-muted">These are the clearest direct trade-in options for this phone and condition.</p>
+            <h2 className="text-2xl font-semibold tracking-tight">Best stores right now</h2>
+            <p className="mt-2 text-sm leading-6 text-muted">Fresh, readable trade-in options for this phone and condition.</p>
           </div>
-          <div className="rounded-[1.2rem] border border-line bg-panel px-4 py-3 text-right text-sm">
-            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted">Why #1</p>
-            <p className="mt-1 font-semibold text-foreground">{model.whyTopResult[0]?.copy ?? "Best verified usable value"}</p>
-          </div>
+          <p className="max-w-sm text-sm text-muted">Top pick: {model.whyTopResult[0]?.copy ?? "Best verified usable value."}</p>
         </div>
         <div className="mt-5 grid gap-5 xl:grid-cols-2">
           {directTradeIns.map((path) => (
@@ -117,8 +112,8 @@ function ComparisonTile({ title, option }: { title: string; option?: SellVsTrade
       <p className="font-semibold text-foreground">{title}</p>
       <p className="mt-2 text-2xl font-semibold tracking-tight">{option.displayValue}</p>
       <p className="mt-1 text-sm text-muted">{option.subtitle}</p>
-      <p className="mt-3 text-sm text-muted">{option.speed} · {option.effort} · {option.risk}</p>
-      <p className="mt-1 text-xs text-muted">{option.confidenceLabel} · {option.freshnessLabel}</p>
+      <p className="mt-3 text-sm text-muted">{option.speed} Â· {option.effort} Â· {option.risk}</p>
+      <p className="mt-1 text-xs text-muted">{option.confidenceLabel} Â· {option.freshnessLabel}</p>
     </Link>
   );
 }
@@ -131,4 +126,3 @@ function Metric({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-

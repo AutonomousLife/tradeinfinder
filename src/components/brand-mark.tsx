@@ -17,7 +17,6 @@
       </div>
       <div>
         <p className="text-sm font-semibold tracking-tight text-foreground">TradeInFinder</p>
-        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted">Clear phone value intelligence</p>
       </div>
     </div>
   );
