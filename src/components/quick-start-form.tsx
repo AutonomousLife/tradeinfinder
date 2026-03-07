@@ -1,6 +1,6 @@
-﻿import { Search, SlidersHorizontal } from "lucide-react";
+﻿import { Search } from "lucide-react";
 
-import type { Condition, Device, Merchant, ValueType } from "@/lib/schema";
+import type { Condition, Device, Merchant } from "@/lib/schema";
 
 type SortValue = "highest-value" | "easiest" | "best-upgrade" | "highest-confidence" | "newest";
 
@@ -12,7 +12,6 @@ export function QuickStartForm({
   defaultMerchant,
   defaultCondition = "good",
   defaultSortBy = "highest-value",
-  defaultValueType = "all",
   mode = "homepage",
 }: {
   devices: Device[];
@@ -22,10 +21,10 @@ export function QuickStartForm({
   defaultMerchant?: string;
   defaultCondition?: Condition;
   defaultSortBy?: SortValue;
-  defaultValueType?: ValueType | "all";
   mode?: "homepage" | "finder" | "upgrade";
 }) {
   const action = mode === "upgrade" ? "/upgrade" : "/search";
+  const showStore = mode !== "homepage";
 
   return (
     <aside className="card glow rounded-[2rem] p-6 sm:p-8">
@@ -34,12 +33,12 @@ export function QuickStartForm({
           <Search className="h-5 w-5" />
         </div>
         <div>
-          <p className="font-mono text-xs uppercase tracking-[0.22em] text-muted">Quick start</p>
-          <h2 className="text-2xl font-semibold tracking-tight">Find real value fast</h2>
+          <p className="font-mono text-xs uppercase tracking-[0.22em] text-muted">Search</p>
+          <h2 className="text-2xl font-semibold tracking-tight">Check your phone value</h2>
         </div>
       </div>
       <p className="mt-4 text-sm leading-6 text-muted">
-        Compare direct trade-in value, store credit, gift card paths, and resale estimates with freshness and confidence attached.
+        Start with your current phone. TradeInFinder will show the best direct trade-in, the resale alternative, and the cleanest upgrade path.
       </p>
       <form action={action} className="mt-6 space-y-4">
         <label className="block">
@@ -50,7 +49,7 @@ export function QuickStartForm({
             ))}
           </select>
         </label>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className={`grid gap-4 ${showStore ? "sm:grid-cols-2" : "sm:grid-cols-1"}`}>
           <label className="block">
             <span className="mb-2 block text-sm font-medium">Condition</span>
             <select name="condition" defaultValue={defaultCondition} className="surface-input w-full rounded-2xl px-4 py-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-accent">
@@ -59,15 +58,17 @@ export function QuickStartForm({
               <option value="poor">Poor / not accepted</option>
             </select>
           </label>
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium">Preferred store</span>
-            <select name="merchant" defaultValue={defaultMerchant ?? ""} className="surface-input w-full rounded-2xl px-4 py-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-accent">
-              <option value="">Any store</option>
-              {merchants.filter((merchant) => merchant.slug !== "ebay").map((merchant) => (
-                <option key={merchant.slug} value={merchant.slug}>{merchant.name}</option>
-              ))}
-            </select>
-          </label>
+          {showStore ? (
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium">Preferred store</span>
+              <select name="merchant" defaultValue={defaultMerchant ?? ""} className="surface-input w-full rounded-2xl px-4 py-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-accent">
+                <option value="">Any store</option>
+                {merchants.filter((merchant) => merchant.slug !== "ebay").map((merchant) => (
+                  <option key={merchant.slug} value={merchant.slug}>{merchant.name}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
         </div>
         <label className="block">
           <span className="mb-2 block text-sm font-medium">Target phone (optional)</span>
@@ -78,41 +79,11 @@ export function QuickStartForm({
             ))}
           </select>
         </label>
-        <div className="rounded-[1.35rem] border border-line bg-panel p-4">
-          <div className="mb-3 flex items-center gap-2">
-            <SlidersHorizontal className="h-4 w-4 text-accent" />
-            <p className="text-sm font-semibold">Ranking filters</p>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block">
-              <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-muted">Sort by</span>
-              <select name="sortBy" defaultValue={defaultSortBy} className="surface-input w-full rounded-2xl px-4 py-3 text-sm outline-none">
-                <option value="highest-value">Highest value</option>
-                <option value="easiest">Easiest option</option>
-                <option value="best-upgrade">Best upgrade path</option>
-                <option value="highest-confidence">Highest confidence</option>
-                <option value="newest">Newest</option>
-              </select>
-            </label>
-            {mode !== "upgrade" ? (
-              <label className="block">
-                <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-muted">Value type</span>
-                <select name="valueType" defaultValue={defaultValueType} className="surface-input w-full rounded-2xl px-4 py-3 text-sm outline-none">
-                  <option value="all">All types</option>
-                  <option value="instant_credit">Instant credit</option>
-                  <option value="purchase_credit">Purchase credit</option>
-                  <option value="store_credit">Store credit</option>
-                  <option value="gift_card">Gift card</option>
-                </select>
-              </label>
-            ) : null}
-          </div>
-        </div>
+        {mode !== "homepage" ? <input type="hidden" name="sortBy" value={defaultSortBy} /> : null}
         <button type="submit" className="flex w-full items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-slate-950 transition hover:-translate-y-0.5 hover:bg-accent-strong">
-          Show results
+          Show my results
         </button>
       </form>
     </aside>
   );
 }
-

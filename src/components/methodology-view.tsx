@@ -6,10 +6,10 @@ export function MethodologyView({ model }: { model: MethodologyModel }) {
       <div className="max-w-4xl">
         <p className="font-mono text-xs uppercase tracking-[0.22em] text-accent">Methodology</p>
         <h1 className="mt-3 text-balance text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">
-          Data transparency, caveat pricing, and ranking logic.
+          How TradeInFinder decides what to show.
         </h1>
         <p className="mt-4 text-lg leading-8 text-muted">
-          TradeInFinder is deliberately honest about what is verified, what is estimated, and what still depends on future ingestion. Seeded data is realistic, but the UI keeps freshness, confidence, and caveats visible everywhere.
+          TradeInFinder is built around simple direct value, resale comparisons, and clean upgrade paths. We show source, freshness, and confidence because a useful number is only useful if you can trust what it means.
         </p>
       </div>
       <div className="grid gap-6 lg:grid-cols-2">
@@ -30,4 +30,3 @@ export function MethodologyView({ model }: { model: MethodologyModel }) {
     </div>
   );
 }
-

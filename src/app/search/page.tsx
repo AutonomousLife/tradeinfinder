@@ -10,7 +10,7 @@ import { getSearchParam } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: "Trade-In Finder",
-  description: "Compare direct trade-in value, gift card paths, store credit, and resale benchmarks for your phone.",
+  description: "Find the best direct trade-in value, compare it with resale, and see the cleanest upgrade path.",
 };
 
 type SearchPageProps = {
@@ -19,8 +19,6 @@ type SearchPageProps = {
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
   const resolved = (await searchParams) ?? {};
-  const valueType = (getSearchParam(resolved.valueType, "all") ?? "all") as "all" | "instant_credit" | "purchase_credit" | "store_credit" | "gift_card";
-  const sortBy = (getSearchParam(resolved.sortBy, "highest-value") ?? "highest-value") as "highest-value" | "easiest" | "best-upgrade" | "highest-confidence" | "newest";
   const targetDevice = getSearchParam(resolved.targetDevice) || undefined;
   const condition = (getSearchParam(resolved.condition, "good") ?? "good") as "good" | "damaged" | "poor";
   const finder = buildTradeInFinder({
@@ -28,18 +26,16 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     targetDeviceSlug: targetDevice,
     condition,
     merchantSlug: getSearchParam(resolved.merchant),
-    valueType,
-    sortBy,
+    sortBy: "highest-value",
   });
 
   return (
     <PageShell className="gap-10 pb-24 pt-10">
-      <SectionHeading eyebrow="Trade-in finder" title="See the best immediate value for your current phone." description="Results compare direct store value against likely resale value so you can decide whether to trade in, sell, or upgrade with cleaner confidence signals." />
-      <div className="grid gap-6 xl:grid-cols-[380px_1fr]">
-        <QuickStartForm devices={devices} merchants={merchants} defaultCurrentDevice={finder.inputs.currentDevice.slug} defaultTargetDevice={finder.inputs.targetDevice?.slug} defaultMerchant={finder.inputs.merchant?.slug} defaultCondition={finder.inputs.condition} defaultSortBy={sortBy} defaultValueType={valueType} mode="finder" />
+      <SectionHeading eyebrow="Trade-in finder" title="One search, three answers" description="TradeInFinder now focuses on the three things most people actually need: the best direct trade-in, the resale alternative, and the best simple upgrade path." />
+      <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
+        <QuickStartForm devices={devices} merchants={merchants} defaultCurrentDevice={finder.inputs.currentDevice.slug} defaultTargetDevice={finder.inputs.targetDevice?.slug} defaultMerchant={finder.inputs.merchant?.slug} defaultCondition={finder.inputs.condition} mode="finder" />
         <FinderResults model={finder} />
       </div>
     </PageShell>
   );
 }
-
