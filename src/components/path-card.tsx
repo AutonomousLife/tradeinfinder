@@ -56,7 +56,7 @@ export function PathCard({ path }: { path: RankedPath }) {
 
       <div className="mt-4 flex items-center gap-2 text-xs text-muted">
         <span>{formatPercent(path.confidence)} confidence</span>
-        <span>â€¢</span>
+        <span>&middot;</span>
         <span>{path.resolvedValue.fallbackLevel.replace(/_/g, " ")}</span>
       </div>
     </article>

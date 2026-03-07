@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 
 import { PathCard } from "@/components/path-card";
 import type { DevicePageModel } from "@/lib/schema";
@@ -8,6 +8,7 @@ export function DeviceDetail({ model }: { model: DevicePageModel }) {
   const resale = model.sellVsTrade.options.find((option) => option.type === "resale");
   const trade = model.sellVsTrade.options.find((option) => option.type === "trade_in");
   const upgrade = model.sellVsTrade.options.find((option) => option.type === "upgrade");
+  const upgradePath = model.paths[0];
 
   return (
     <div className="grid gap-8">
@@ -45,7 +46,7 @@ export function DeviceDetail({ model }: { model: DevicePageModel }) {
                 <p className="font-semibold text-foreground">{option!.title}</p>
                 <p className="mt-2 text-2xl font-semibold tracking-tight">{option!.displayValue}</p>
                 <p className="mt-1 text-sm text-muted">{option!.subtitle}</p>
-                <p className="mt-3 text-xs text-muted">{option!.confidenceLabel} · {option!.freshnessLabel}</p>
+                <p className="mt-3 text-xs text-muted">{option!.confidenceLabel} &middot; {option!.freshnessLabel}</p>
               </Link>
             ))}
           </div>
@@ -57,8 +58,15 @@ export function DeviceDetail({ model }: { model: DevicePageModel }) {
               <p className="font-semibold text-foreground">{upgrade.title}</p>
               <p className="mt-1 text-sm text-muted">{upgrade.subtitle}</p>
               <p className="mt-3 text-2xl font-semibold tracking-tight">{upgrade.displayValue}</p>
-              <p className="mt-2 text-sm text-muted">{upgrade.confidenceLabel} · {upgrade.freshnessLabel}</p>
-              <Link href={upgrade.href} className="mt-4 inline-flex rounded-full bg-accent px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-strong">Open upgrade path</Link>
+              <p className="mt-2 text-sm text-muted">{upgrade.confidenceLabel} &middot; {upgrade.freshnessLabel}</p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <Link href={upgrade.href} className="inline-flex rounded-full bg-accent px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-strong">Open upgrade path</Link>
+                {upgradePath?.links.redemptionAffiliateLink ? (
+                  <a href={upgradePath.links.redemptionAffiliateLink} target="_blank" rel="noreferrer" className="inline-flex rounded-full border border-line px-4 py-2 text-sm font-semibold transition hover:bg-surface">
+                    Open {upgradePath.merchant.name}
+                  </a>
+                ) : null}
+              </div>
             </div>
           ) : (
             <p className="mt-4 text-sm leading-6 text-muted">No target phone was selected for this device summary, so upgrade guidance is limited.</p>

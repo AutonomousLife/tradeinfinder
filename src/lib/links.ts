@@ -49,35 +49,77 @@ function internalRedemptionLink(deviceSlug: string, merchantSlug: string, target
 function buildMerchantExternalLink(args: {
   merchant: Merchant;
   sourceUrl?: string;
+  deviceSlug: string;
+  targetDeviceSlug?: string;
   deviceLabel: string;
   targetDeviceLabel?: string;
 }) {
-  const query = encodeURIComponent((args.targetDeviceLabel ?? args.deviceLabel).replace(/\s+/g, " ").trim());
+  const productQuery = encodeURIComponent((args.targetDeviceLabel ?? args.deviceLabel).replace(/\s+/g, " ").trim());
+  const deviceQuery = encodeURIComponent(args.deviceLabel.replace(/\s+/g, " ").trim());
   const fallback = args.sourceUrl ?? args.merchant.siteUrl;
 
   if (args.merchant.slug === "apple") {
-    return args.targetDeviceLabel ? `https://www.apple.com/us/search/${query}?src=serp` : "https://www.apple.com/shop/trade-in";
+    if (args.targetDeviceSlug) {
+      return appleProductUrl(args.targetDeviceSlug) ?? `https://www.apple.com/us/search/${productQuery}?src=serp`;
+    }
+    return "https://www.apple.com/shop/trade-in";
   }
 
   if (args.merchant.slug === "samsung") {
-    return `https://www.samsung.com/us/search/searchMain/?listType=g&searchTerm=${query}`;
+    if (args.targetDeviceSlug) {
+      return samsungProductUrl(args.targetDeviceSlug) ?? `https://www.samsung.com/us/search/searchMain/?listType=g&searchTerm=${productQuery}`;
+    }
+    return "https://www.samsung.com/us/trade-in/";
   }
 
   if (args.merchant.slug === "best-buy") {
-    return `https://www.bestbuy.com/site/searchpage.jsp?st=${query}`;
+    return args.targetDeviceSlug
+      ? `https://www.bestbuy.com/site/searchpage.jsp?st=${productQuery}`
+      : `https://www.bestbuy.com/site/searchpage.jsp?st=${deviceQuery}`;
   }
 
   if (args.merchant.slug === "amazon") {
-    return args.targetDeviceLabel ? `https://www.amazon.com/s?k=${query}` : "https://www.amazon.com/b?node=9187220011";
+    return args.targetDeviceLabel ? `https://www.amazon.com/s?k=${productQuery}` : "https://www.amazon.com/b?node=9187220011";
   }
 
   if (args.merchant.slug === "google-store") {
-    return `https://store.google.com/us/search?q=${query}`;
+    if (args.targetDeviceSlug) {
+      return googleProductUrl(args.targetDeviceSlug) ?? `https://store.google.com/us/search?q=${productQuery}`;
+    }
+    return "https://store.google.com/us/magazine/trade_in";
   }
 
   if (args.merchant.slug === "ebay") {
-    return `https://www.ebay.com/sch/i.html?_nkw=${query}`;
+    return `https://www.ebay.com/sch/i.html?_nkw=${productQuery}`;
   }
 
   return fallback;
+}
+
+function appleProductUrl(targetDeviceSlug: string) {
+  const match = /^iphone-(.+)-\d+$/.exec(targetDeviceSlug);
+  if (!match) return undefined;
+
+  return `https://www.apple.com/shop/buy-iphone/iphone-${match[1]}`;
+}
+
+function samsungProductUrl(targetDeviceSlug: string) {
+  const map: Record<string, string> = {
+    "galaxy-s24-128": "https://www.samsung.com/us/smartphones/galaxy-s24/",
+    "galaxy-s24-ultra-256": "https://www.samsung.com/us/smartphones/galaxy-s24-ultra/",
+    "galaxy-s23-128": "https://www.samsung.com/us/smartphones/galaxy-s23/",
+    "galaxy-s23-ultra-256": "https://www.samsung.com/us/smartphones/galaxy-s23-ultra/",
+  };
+
+  return map[targetDeviceSlug];
+}
+
+function googleProductUrl(targetDeviceSlug: string) {
+  const map: Record<string, string> = {
+    "pixel-9-pro-256": "https://store.google.com/us/product/pixel_9_pro",
+    "pixel-8-128": "https://store.google.com/us/product/pixel_8",
+    "pixel-8-pro-256": "https://store.google.com/us/product/pixel_8_pro",
+  };
+
+  return map[targetDeviceSlug];
 }

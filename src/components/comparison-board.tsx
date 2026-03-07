@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 
 import { formatCurrency, formatPercent } from "@/lib/format";
 import type { UpgradeBoard } from "@/lib/schema";
@@ -41,6 +41,11 @@ export function ComparisonBoard({ scenarios }: { scenarios: UpgradeBoard[] }) {
                 <div className="mt-4 flex flex-wrap gap-3">
                   <Link href={`/offer/${path.offer.slug}`} className="rounded-full border border-line px-4 py-2 text-sm font-semibold transition hover:bg-surface">Offer detail</Link>
                   <Link href={path.links.redemptionLink} className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-strong">{path.links.redemptionLabel}</Link>
+                  {path.links.redemptionAffiliateLink ? (
+                    <a href={path.links.redemptionAffiliateLink} target="_blank" rel="noreferrer" className="rounded-full border border-line px-4 py-2 text-sm font-semibold transition hover:bg-surface">
+                      Open {path.merchant.name}
+                    </a>
+                  ) : null}
                 </div>
               </div>
             ))}

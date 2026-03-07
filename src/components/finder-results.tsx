@@ -18,6 +18,7 @@ export function FinderResults({ model }: { model: TradeInFinderModel }) {
   const resaleOption = model.sellVsTrade.find((option) => option.type === "resale");
   const tradeOption = model.sellVsTrade.find((option) => option.type === "trade_in");
   const upgradeOption = model.sellVsTrade.find((option) => option.type === "upgrade");
+  const upgradePath = model.inputs.targetDevice ? model.paths[0] : undefined;
 
   return (
     <div className="grid gap-6">
@@ -74,7 +75,14 @@ export function FinderResults({ model }: { model: TradeInFinderModel }) {
                 <Metric label="Risk" value={upgradeOption.risk} />
               </div>
               <p className="mt-4 text-sm leading-6 text-muted">{upgradeOption.caveat}</p>
-              <Link href={upgradeOption.href} className="mt-5 inline-flex rounded-full bg-accent px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-strong">Open upgrade path</Link>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <Link href={upgradeOption.href} className="inline-flex rounded-full bg-accent px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-strong">Open upgrade path</Link>
+                {upgradePath?.links.redemptionAffiliateLink ? (
+                  <a href={upgradePath.links.redemptionAffiliateLink} target="_blank" rel="noreferrer" className="inline-flex rounded-full border border-line px-4 py-2 text-sm font-semibold transition hover:bg-surface">
+                    Open {upgradePath.merchant.name}
+                  </a>
+                ) : null}
+              </div>
             </div>
           ) : (
             <div className="mt-5 rounded-[1.4rem] border border-line bg-panel p-5 text-sm leading-6 text-muted">
@@ -112,8 +120,8 @@ function ComparisonTile({ title, option }: { title: string; option?: SellVsTrade
       <p className="font-semibold text-foreground">{title}</p>
       <p className="mt-2 text-2xl font-semibold tracking-tight">{option.displayValue}</p>
       <p className="mt-1 text-sm text-muted">{option.subtitle}</p>
-      <p className="mt-3 text-sm text-muted">{option.speed} Â· {option.effort} Â· {option.risk}</p>
-      <p className="mt-1 text-xs text-muted">{option.confidenceLabel} Â· {option.freshnessLabel}</p>
+      <p className="mt-3 text-sm text-muted">{option.speed} &middot; {option.effort} &middot; {option.risk}</p>
+      <p className="mt-1 text-xs text-muted">{option.confidenceLabel} &middot; {option.freshnessLabel}</p>
     </Link>
   );
 }
