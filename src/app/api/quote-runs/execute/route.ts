@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { env } from "@/lib/env";
 import { buildQuoteRequestPlan } from "@/lib/live-quotes";
+import { persistCollectorResult } from "@/lib/quote-persistence";
 import { buildCollectorInput, runCollector } from "@/lib/quote-collectors";
 
 const executeSchema = z.object({
@@ -43,5 +44,15 @@ export async function POST(request: Request) {
     }),
   );
 
-  return NextResponse.json({ accepted: result.status === "captured", plan, result });
+  const persistence = await persistCollectorResult(result).catch((error) => ({
+    persisted: false,
+    reason: error instanceof Error ? error.message : "Unknown persistence failure",
+  }));
+
+  return NextResponse.json({
+    accepted: result.status === "captured",
+    plan,
+    result,
+    persistence,
+  });
 }
