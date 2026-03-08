@@ -1,4 +1,4 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 
 export const conditionSchema = z.enum(["good", "damaged", "poor"]);
 export type Condition = z.infer<typeof conditionSchema>;
@@ -29,6 +29,29 @@ export const fallbackLevelSchema = z.enum([
   "unavailable",
 ]);
 export type FallbackLevel = z.infer<typeof fallbackLevelSchema>;
+
+export const captureModeSchema = z.enum([
+  "live_quote_capture",
+  "seeded_import",
+  "manual_snapshot",
+  "modeled_fallback",
+]);
+export type CaptureMode = z.infer<typeof captureModeSchema>;
+
+export const valueOriginSchema = z.enum([
+  "live_quote",
+  "seeded_snapshot",
+  "manual_review",
+  "modeled_estimate",
+  "resale_estimate",
+]);
+export type ValueOrigin = z.infer<typeof valueOriginSchema>;
+
+export const quoteRunStatusSchema = z.enum(["pending", "running", "captured", "failed", "expired"]);
+export type QuoteRunStatus = z.infer<typeof quoteRunStatusSchema>;
+
+export const quoteJobStatusSchema = z.enum(["queued", "active", "failed", "paused"]);
+export type QuoteJobStatus = z.infer<typeof quoteJobStatusSchema>;
 
 export const deviceSchema = z.object({
   id: z.string(),
@@ -75,8 +98,51 @@ export const rawIngestSchema = z.object({
   parseStatus: z.enum(["parsed", "failed", "pending"]),
   parseErrors: z.array(z.string()),
   merchantParserVersion: z.string(),
+  captureMode: captureModeSchema,
 });
 export type RawIngestRecord = z.infer<typeof rawIngestSchema>;
+
+export const quoteArtifactSchema = z.object({
+  id: z.string(),
+  merchantId: z.string(),
+  deviceSlug: z.string(),
+  targetDeviceSlug: z.string().nullable().default(null),
+  condition: conditionSchema,
+  sourceUrl: z.string(),
+  artifactType: z.enum(["html", "json", "screenshot", "manual_note"]),
+  payload: z.string(),
+  capturedAt: z.string(),
+  parserVersion: z.string(),
+});
+export type QuoteArtifact = z.infer<typeof quoteArtifactSchema>;
+
+export const quoteRunSchema = z.object({
+  id: z.string(),
+  merchantId: z.string(),
+  deviceSlug: z.string(),
+  targetDeviceSlug: z.string().nullable().default(null),
+  condition: conditionSchema,
+  status: quoteRunStatusSchema,
+  startedAt: z.string(),
+  finishedAt: z.string().nullable().default(null),
+  error: z.string().nullable().default(null),
+  artifactId: z.string().nullable().default(null),
+  valueRecordId: z.string().nullable().default(null),
+});
+export type QuoteRun = z.infer<typeof quoteRunSchema>;
+
+export const quoteJobSchema = z.object({
+  id: z.string(),
+  merchantId: z.string(),
+  targetDeviceSlug: z.string().nullable().default(null),
+  cadence: z.string(),
+  priority: z.enum(["high", "normal", "low"]),
+  status: quoteJobStatusSchema,
+  lastRunAt: z.string().nullable().default(null),
+  nextRunAt: z.string().nullable().default(null),
+  note: z.string(),
+});
+export type QuoteJob = z.infer<typeof quoteJobSchema>;
 
 export const valueRecordSchema = z.object({
   id: z.string(),
@@ -101,6 +167,9 @@ export const valueRecordSchema = z.object({
   targetDeviceSlug: z.string().nullable().default(null),
   conditionNotes: z.string().nullable().default(null),
   exactStorageMatch: z.boolean().default(true),
+  origin: valueOriginSchema,
+  publicVisible: z.boolean().default(false),
+  quoteCapturedAt: z.string().nullable().default(null),
 });
 export type ValueRecord = z.infer<typeof valueRecordSchema>;
 export type TradeInOffer = ValueRecord;
@@ -320,6 +389,16 @@ export type AdminModel = {
     status: string;
     note: string;
   }[];
+  quoteRuns?: {
+    title: string;
+    status: string;
+    note: string;
+  }[];
+  quoteJobs?: {
+    title: string;
+    status: string;
+    note: string;
+  }[];
 };
 
 export type DevicePageModel = {
@@ -360,7 +439,7 @@ export type HomepageSnapshot = {
   freshness: string;
   devices: Device[];
   merchants: Store[];
-  examplePath: RankedPath;
+  examplePath?: RankedPath;
   heroStats: {
     bestDirectValue: string;
     bestResaleValue: string;

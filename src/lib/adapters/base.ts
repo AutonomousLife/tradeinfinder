@@ -1,4 +1,4 @@
-import type { Device, RawIngestRecord, Store, ValueRecord, ValueType } from "@/lib/schema";
+import type { Device, RawIngestRecord, Store, ValueOrigin, ValueRecord, ValueType } from "@/lib/schema";
 import { buildResolvedValue, computeConfidence, normalizeCondition, verificationStatusFor } from "@/lib/accuracy";
 
 export type AdapterContext = {
@@ -53,6 +53,24 @@ export function createValueRecord(args: {
     exactMatch: args.exactMatch ?? true,
   });
 
+  let origin: ValueOrigin = "modeled_estimate";
+  let publicVisible = false;
+  let quoteCapturedAt: string | null = null;
+
+  if (args.valueType === "resale_estimate") {
+    origin = "resale_estimate";
+    publicVisible = true;
+  } else if (args.raw.captureMode === "live_quote_capture") {
+    origin = "live_quote";
+    publicVisible = true;
+    quoteCapturedAt = args.raw.retrievedAt;
+  } else if (args.raw.captureMode === "manual_snapshot") {
+    origin = "manual_review";
+    quoteCapturedAt = args.raw.retrievedAt;
+  } else if (args.raw.captureMode === "seeded_import") {
+    origin = "seeded_snapshot";
+  }
+
   return {
     id: `value_${args.raw.merchantId}_${args.deviceSlug}_${normalized.condition}_${args.valueType}_${Math.round(args.valueAmount)}`,
     slug: `${args.raw.merchantId}-${args.deviceSlug}-${args.valueType}`,
@@ -76,6 +94,9 @@ export function createValueRecord(args: {
     targetDeviceSlug: args.targetDeviceSlug ?? null,
     conditionNotes: normalized.note,
     exactStorageMatch: args.exactStorageMatch ?? true,
+    origin,
+    publicVisible,
+    quoteCapturedAt,
   } satisfies ValueRecord;
 }
 
@@ -108,4 +129,3 @@ export function resolvedInspector(record: ValueRecord) {
     ],
   );
 }
-

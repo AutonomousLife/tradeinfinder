@@ -6,6 +6,9 @@ import type {
   Device,
   ManualOverride,
   Merchant,
+  QuoteArtifact,
+  QuoteJob,
+  QuoteRun,
   RawIngestRecord,
   SavedScenario,
   ValueRecord,
@@ -97,7 +100,7 @@ export const merchants: Merchant[] = [
   { id: "ebay", slug: "ebay", name: "eBay", type: "marketplace", logoUrl: "/merchants/ebay.svg", siteUrl: "https://www.ebay.com", affiliateCapable: true, trustScore: 0.74, notes: "Resale estimate benchmark." },
 ];
 
-function rawRecord(id: string, merchantId: string, sourceName: string, sourceUrl: string, retrievedAt: string, merchantParserVersion: string, entries: unknown[]): RawIngestRecord {
+function rawRecord(id: string, merchantId: string, sourceName: string, sourceUrl: string, retrievedAt: string, merchantParserVersion: string, entries: unknown[], captureMode: RawIngestRecord["captureMode"] = "seeded_import"): RawIngestRecord {
   return {
     id,
     merchantId,
@@ -109,6 +112,7 @@ function rawRecord(id: string, merchantId: string, sourceName: string, sourceUrl
     parseStatus: "parsed",
     parseErrors: [],
     merchantParserVersion,
+    captureMode,
   };
 }
 
@@ -197,6 +201,9 @@ const manualValueRecords: ValueRecord[] = manualOverrides.map((override) => ({
   targetDeviceSlug: null,
   conditionNotes: "Manually reviewed by admin.",
   exactStorageMatch: true,
+  origin: "manual_review",
+  publicVisible: false,
+  quoteCapturedAt: override.reviewedAt,
 }));
 
 const merged = [...adapterValues.filter((value) => value.valueAmount > 0), ...manualValueRecords];
@@ -210,6 +217,62 @@ for (const value of merged) {
 export const valueRecords: ValueRecord[] = [...deduped.values()];
 export const offers: ValueRecord[] = valueRecords.filter((value) => value.valueType !== "resale_estimate");
 export const resaleEstimates: ValueRecord[] = valueRecords.filter((value) => value.valueType === "resale_estimate");
+
+export const quoteArtifacts: QuoteArtifact[] = [];
+
+export const quoteRuns: QuoteRun[] = [
+  {
+    id: "quote_run_bestbuy_iphone13_good",
+    merchantId: "best-buy",
+    deviceSlug: "iphone-13-128",
+    targetDeviceSlug: null,
+    condition: "good",
+    status: "failed",
+    startedAt: "2026-03-07T11:30:00.000Z",
+    finishedAt: "2026-03-07T11:31:00.000Z",
+    error: "Live quote capture is not connected yet. Seeded snapshot remains admin-only.",
+    artifactId: null,
+    valueRecordId: null,
+  },
+  {
+    id: "quote_run_apple_iphone13_good",
+    merchantId: "apple",
+    deviceSlug: "iphone-13-128",
+    targetDeviceSlug: "iphone-16-pro-256",
+    condition: "good",
+    status: "pending",
+    startedAt: "2026-03-07T12:00:00.000Z",
+    finishedAt: null,
+    error: null,
+    artifactId: null,
+    valueRecordId: null,
+  },
+];
+
+export const quoteJobs: QuoteJob[] = [
+  {
+    id: "job_apple_quote_refresh",
+    merchantId: "apple",
+    targetDeviceSlug: "iphone-16-pro-256",
+    cadence: "Every 6 hours",
+    priority: "high",
+    status: "paused",
+    lastRunAt: null,
+    nextRunAt: null,
+    note: "Waiting for a real quote-capture worker.",
+  },
+  {
+    id: "job_bestbuy_quote_refresh",
+    merchantId: "best-buy",
+    targetDeviceSlug: null,
+    cadence: "Every 6 hours",
+    priority: "high",
+    status: "paused",
+    lastRunAt: null,
+    nextRunAt: null,
+    note: "Best Buy trade-in values should not be public until a live capture pipeline exists.",
+  },
+];
 
 export const acquisitionSources: AcquisitionSource[] = [
   { id: "acq_iphone11_ebay", deviceId: devices.find((device) => device.slug === "iphone-11-128")!.id, merchantId: "ebay", sourceType: "ebay", title: "iPhone 11 128GB sold listings", url: "https://www.ebay.com/sch/i.html?_nkw=iPhone+11+128GB", affiliateUrl: null, estimatedPrice: 210, condition: "good", sellerRatingOrConfidence: 0.78, lastCheckedAt: "2026-03-06T08:20:00.000Z" },

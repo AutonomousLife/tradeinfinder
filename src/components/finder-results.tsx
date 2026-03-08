@@ -6,20 +6,66 @@ import { VerdictCard } from "@/components/verdict-card";
 import type { SellVsTradeOption, TradeInFinderModel } from "@/lib/schema";
 
 export function FinderResults({ model }: { model: TradeInFinderModel }) {
+  const resaleOption = model.sellVsTrade.find((option) => option.type === "resale");
+  const tradeOption = model.sellVsTrade.find((option) => option.type === "trade_in");
+  const upgradeOption = model.sellVsTrade.find((option) => option.type === "upgrade");
+
   if (!model.paths.length) {
     return (
-      <div className="card rounded-[2rem] p-8">
-        <p className="font-mono text-xs uppercase tracking-[0.22em] text-accent">No matching values</p>
-        <h2 className="mt-3 text-3xl font-semibold tracking-tight">TradeInFinder could not find a clean match.</h2>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">Try a different condition or remove the store preference. The app will only show values it can explain clearly.</p>
+      <div className="grid gap-8">
+        <VerdictCard
+          eyebrow="Live quote status"
+          title="No public live trade-in quote matched this search"
+          summary="TradeInFinder now withholds direct store values unless the quote is marked safe for public use. Seeded merchant snapshots and manual overrides stay internal until a real capture pipeline promotes them."
+          valueLabel="Direct trade-in"
+          value="Unavailable"
+          rationale="This is intentional. The site should say 'no live quote' rather than invent a precise-looking current value from stale or seeded merchant data."
+          notes={[
+            { label: "Current phone", value: model.inputs.currentDevice.model },
+            { label: "Condition", value: model.inputs.condition },
+            { label: "Resale estimate", value: resaleOption?.displayValue ?? "Unavailable" },
+            { label: "Upgrade", value: upgradeOption?.displayValue ?? "Waiting on live quote" },
+          ]}
+          primaryCta={{ label: "See methodology", href: "/methodology" }}
+          secondaryCta={resaleOption ? { label: "Open resale comparison", href: resaleOption.href } : { label: "Back to search", href: "/search" }}
+        />
+
+        <TrendStrip device={model.inputs.currentDevice} />
+
+        <section className="grid gap-8 lg:grid-cols-[1fr_1fr]">
+          <div className="card rounded-[2rem] p-6 sm:p-8">
+            <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-accent">Sell vs trade</p>
+            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em]">What you can still act on right now.</h2>
+            <div className="mt-6 grid gap-6 sm:grid-cols-2">
+              <DecisionColumn title="Trade it in" option={tradeOption} />
+              <DecisionColumn title="Sell it yourself" option={resaleOption} />
+            </div>
+            <p className="mt-6 max-w-2xl text-sm leading-6 text-muted">
+              Resale remains visible because it is already presented as an estimate. Direct trade-in will stay blank until a live merchant quote is available.
+            </p>
+          </div>
+          <div className="card rounded-[2rem] p-6 sm:p-8">
+            <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-accent">Best simple upgrade path</p>
+            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em]">Upgrade advice waits for a quote it can trust.</h2>
+            {upgradeOption ? (
+              <div className="mt-6 border-t border-line pt-5">
+                <p className="text-2xl font-semibold tracking-tight">{upgradeOption.title}</p>
+                <p className="mt-3 max-w-xl text-sm leading-6 text-muted">{upgradeOption.subtitle}</p>
+                <p className="mt-4 text-sm leading-6 text-muted">{upgradeOption.caveat}</p>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <Link href={upgradeOption.href} className="inline-flex rounded-full border border-line px-4 py-2 text-sm font-semibold transition hover:bg-surface">View analysis</Link>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-6 text-sm leading-6 text-muted">Add a target phone to compare resale against a simple upgrade path once live store quotes are available.</p>
+            )}
+          </div>
+        </section>
       </div>
     );
   }
 
   const directTradeIns = model.paths.slice(0, 4);
-  const resaleOption = model.sellVsTrade.find((option) => option.type === "resale");
-  const tradeOption = model.sellVsTrade.find((option) => option.type === "trade_in");
-  const upgradeOption = model.sellVsTrade.find((option) => option.type === "upgrade");
   const verdict = buildVerdict(model, tradeOption, resaleOption, upgradeOption);
 
   return (
@@ -81,13 +127,6 @@ export function FinderResults({ model }: { model: TradeInFinderModel }) {
                 <Metric label="Risk" value={upgradeOption.risk} />
               </dl>
               <div className="mt-6 flex flex-wrap gap-3">
-                {directTradeIns[0]?.links.redemptionAffiliateLink ? (
-                  <a href={directTradeIns[0].links.redemptionAffiliateLink} target="_blank" rel="noreferrer" className="inline-flex rounded-full bg-accent px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-strong">
-                    Open {directTradeIns[0].merchant.name}
-                  </a>
-                ) : (
-                  <Link href={upgradeOption.href} className="inline-flex rounded-full bg-accent px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-strong">Open upgrade path</Link>
-                )}
                 <Link href={upgradeOption.href} className="inline-flex rounded-full border border-line px-4 py-2 text-sm font-semibold transition hover:bg-surface">View analysis</Link>
               </div>
             </div>
@@ -121,8 +160,8 @@ function buildVerdict(
         { label: "Target", value: model.inputs.targetDevice.model },
       ],
       primaryCta: {
-        label: leadPath.links.redemptionAffiliateLink ? `Open ${leadPath.merchant.name}` : "Open upgrade path",
-        href: leadPath.links.redemptionAffiliateLink ?? upgradeOption.href,
+        label: leadPath.links.redemptionAffiliateLink ? `Open ${leadPath.merchant.name}` : "View store page",
+        href: leadPath.links.redemptionAffiliateLink ?? leadPath.links.redemptionLink,
         external: Boolean(leadPath.links.redemptionAffiliateLink),
       },
       secondaryCta: { label: "View analysis", href: upgradeOption.href },

@@ -5,6 +5,8 @@ import {
   manualOverrides,
   merchants,
   offers,
+  quoteJobs,
+  quoteRuns,
   rawIngestRecords,
   resaleEstimates,
   savedScenarios,
@@ -80,6 +82,7 @@ const devicesById = new Map(devices.map((device) => [device.id, device]));
 const merchantsBySlug = new Map(merchants.map((merchant) => [merchant.slug, merchant]));
 const merchantsById = new Map(merchants.map((merchant) => [merchant.id, merchant]));
 const rawIngestById = new Map(rawIngestRecords.map((record) => [record.id, record]));
+const publicOffers = offers.filter((record) => record.publicVisible);
 
 function getDevice(slug?: string) {
   return slug ? devicesBySlug.get(slug) : undefined;
@@ -168,7 +171,7 @@ function resolveValueRecord(args: {
   condition: Condition;
   valueType?: ValueType | "all";
 }): ResolvedRecord | null {
-  const base = offers.filter((record) => {
+  const base = publicOffers.filter((record) => {
     if (!record.active) return false;
     if (record.merchantId !== args.merchant.id) return false;
     if (args.valueType && args.valueType !== "all" && record.valueType !== args.valueType) return false;
@@ -474,11 +477,11 @@ export function buildTradeInFinder(args: FinderArgs): TradeInFinderModel {
     inputs: { currentDevice, targetDevice, merchant, condition: args.condition },
     summary: {
       bestTradeInValue: top?.resolvedValue.displayValue ?? "Unavailable",
-      bestTradeInLabel: top ? `${top.merchant.name} ${formatValueType(top.offer.valueType).toLowerCase()}` : "No exact or estimated store value",
+      bestTradeInLabel: top ? `${top.merchant.name} ${formatValueType(top.offer.valueType).toLowerCase()}` : "No live store quote captured",
       bestResaleValue: resale ? buildResolvedValue(resale, resale.verificationStatus === "verified" || resale.verificationStatus === "manual" ? "exact_verified" : "exact_estimated", `Exact ${currentDevice.model} resale estimate.`, [{ label: "Source", impact: `Based on ${resale.sourceName}.` }]).displayValue : "Unavailable",
       bestResaleLabel: resale ? `${resale.sourceName} net estimate` : "No resale estimate",
       bestUpgradeValue: targetDevice && top ? formatCurrency(top.effectiveUpgradeCost) : "Choose a target phone",
-      bestUpgradeLabel: targetDevice && top ? `${top.merchant.name} keeps the upgrade simple` : "Add a target phone for upgrade math",
+      bestUpgradeLabel: targetDevice && top ? `${top.merchant.name} keeps the upgrade simple` : targetDevice ? "No live store quote captured for this upgrade" : "Add a target phone for upgrade math",
       avgConfidence: paths.length ? paths.reduce((sum, path) => sum + path.confidence, 0) / paths.length : 0,
     },
     whyTopResult: top
@@ -590,7 +593,7 @@ export function buildDealsHub(): DealsHubModel {
 
   return {
     sections: [
-      { eyebrow: "Best direct trade-ins", title: "Strong immediate-value paths", description: "Exact and recently checked values rank first, with estimated fallbacks clearly labeled.", paths: bestTrade.slice(0, 3) },
+      { eyebrow: "Best direct trade-ins", title: "Strong immediate-value paths", description: publicOffers.length ? "Exact and recently checked values rank first, with estimated fallbacks clearly labeled." : "This section stays empty until a live quote capture exists.", paths: bestTrade.slice(0, 3) },
       { eyebrow: "Best Samsung upgrades", title: "Clean Galaxy upgrade paths", description: "Useful when you want simple purchase-credit value without hidden lock-in.", paths: bestSamsung.slice(0, 3) },
       { eyebrow: "Best Pixel upgrades", title: "Best current Pixel paths", description: "Google and retailer options compared with confidence and freshness built in.", paths: bestPixel.slice(0, 3) },
     ],
@@ -612,23 +615,23 @@ export function buildHomepageSnapshot(): HomepageSnapshot {
     merchants,
     examplePath,
     heroStats: {
-      bestDirectValue: bestDeals[0]?.resolvedValue.displayValue ?? "Unavailable",
+      bestDirectValue: bestDeals[0]?.resolvedValue.displayValue ?? "No live quote",
       bestResaleValue: sellVsTrade?.options.find((option) => option.type === "resale")?.displayValue ?? "Unavailable",
-      offerCount: offers.length,
+      offerCount: publicOffers.length,
       deviceCoverage: devices.length,
-      avgConfidence: offers.length ? offers.reduce((sum, offer) => sum + offer.confidenceScore, 0) / offers.length : 0,
+      avgConfidence: publicOffers.length ? publicOffers.reduce((sum, offer) => sum + offer.confidenceScore, 0) / publicOffers.length : 0,
     },
     merchantStrip: merchants.map((merchant) => merchant.name),
     trustItems: [
-      { label: "Source-backed values", value: `${rawIngestRecords.length} ingest snapshots`, copy: "Every value record carries source, freshness, and verification metadata." },
+      { label: "Source-backed values", value: `${rawIngestRecords.length} ingest snapshots`, copy: "Snapshots are stored even when the public site withholds the value until a live quote is captured." },
       { label: "Simple value types", value: "Instant, store, gift card, purchase credit", copy: "No carrier bill-credit math in the core ranking." },
       { label: "Confidence aware", value: "Ranges when certainty is low", copy: "Low-confidence estimates stop pretending to be exact numbers." },
-      { label: "Manual controls", value: `${manualOverrides.length} override path${manualOverrides.length === 1 ? "" : "s"}`, copy: "Admins can correct bad values, mark stale records, and add review notes." },
+      { label: "Live quote gate", value: `${publicOffers.length} public quote${publicOffers.length === 1 ? "" : "s"}`, copy: "Seeded and manual values stay in admin until a true quote capture exists." },
     ],
     methodologySteps: [
       { kicker: "1", title: "Capture source data", copy: "Raw merchant snapshots are stored before normalization so values can be audited later." },
-      { kicker: "2", title: "Resolve the best match", copy: "Exact verified matches rank first, then same-model storage adjustments, then family-level estimates if nothing better exists." },
-      { kicker: "3", title: "Show value quality", copy: "Each result shows source, last checked time, confidence, and why that value was chosen." },
+      { kicker: "2", title: "Require a live quote", copy: "Seeded merchant snapshots stay internal research. Public rankings only use quotes marked safe for display." },
+      { kicker: "3", title: "Show value quality", copy: "Each public result shows source, last checked time, confidence, and why that value was chosen. If no live quote exists, the UI says so." },
     ],
     instantVsDelayedChart: bestDeals.map((path) => ({ label: path.merchant.name, instant: path.instantValue, delayed: path.resaleNetValue ?? 0 })),
     bestDeals,
@@ -642,7 +645,7 @@ export function buildHomepageSnapshot(): HomepageSnapshot {
     sellVsTradeHighlights: sellVsTrade?.options.slice(0, 3) ?? [],
     popularTargets: devices.filter((device) => device.year >= CURRENT_YEAR - 2).slice(0, 6),
     upgradeBoards: buildUpgradeOptimizer({ currentDeviceSlug: "iphone-13-128", targetDeviceSlug: "iphone-16-pro-256", condition: "good" }).boards,
-    expiringOffers: offers
+    expiringOffers: publicOffers
       .map((offer) => ({
         slug: offer.slug,
         merchant: storeById(offer.merchantId)?.name ?? offer.merchantId,
@@ -747,12 +750,12 @@ export function buildAdminModel(): AdminModel {
     summary: [
       { label: "Devices", value: String(devices.length), copy: "Phone catalog available for exact and fallback matching." },
       { label: "Stores", value: String(merchants.length), copy: "Merchant adapters keep parsing logic separated by source." },
-      { label: "Values", value: String(offers.length + resaleEstimates.length), copy: "Normalized records with source and freshness metadata." },
+      { label: "Public quotes", value: String(publicOffers.length), copy: "Only public-visible live quote records rank on the public site." },
       { label: "Raw ingest", value: String(rawIngestRecords.length), copy: "Auditable snapshots for parser QA and manual review." },
     ],
     collections: [
       { title: "Raw ingest", copy: "Stored payload snapshots, parser version, parse status, and errors for every merchant source.", count: String(rawIngestRecords.length) },
-      { title: "Normalized values", copy: "Device-specific value records with staleness windows, confidence, and verification status.", count: String(offers.length + resaleEstimates.length) },
+      { title: "Normalized values", copy: "Device-specific value records with staleness windows, confidence, verification status, and public visibility.", count: String(offers.length + resaleEstimates.length) },
       { title: "Manual overrides", copy: "Admin-reviewed value corrections that can force a manual status or disable bad records.", count: String(manualOverrides.length) },
       { title: "Resale benchmarks", copy: "Estimated sell-it-yourself net values kept separate from store trade-in records.", count: String(resaleEstimates.length) },
     ],
@@ -766,6 +769,16 @@ export function buildAdminModel(): AdminModel {
       title: `${storeById(override.merchantId)?.name ?? override.merchantId} override`,
       status: `${override.verificationStatus} - ${override.active ? "active" : "disabled"}`,
       note: override.notes,
+    })),
+    quoteRuns: quoteRuns.map((run) => ({
+      title: `${storeById(run.merchantId)?.name ?? run.merchantId} · ${run.deviceSlug}`,
+      status: run.status,
+      note: run.error ?? `Started ${run.startedAt}`,
+    })),
+    quoteJobs: quoteJobs.map((job) => ({
+      title: `${storeById(job.merchantId)?.name ?? job.merchantId} refresh`,
+      status: job.status,
+      note: job.note,
     })),
   };
 }

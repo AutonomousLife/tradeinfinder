@@ -1,4 +1,4 @@
-﻿import type { AdminModel } from "@/lib/schema";
+import type { AdminModel } from "@/lib/schema";
 
 export function AdminConsole({ model }: { model: AdminModel }) {
   return (
@@ -70,7 +70,32 @@ export function AdminConsole({ model }: { model: AdminModel }) {
           </div>
         </div>
       </section>
+      <section className="grid gap-6 xl:grid-cols-2">
+        <div className="card rounded-[2rem] p-6">
+          <h2 className="text-2xl font-semibold tracking-tight">Quote runs</h2>
+          <div className="mt-5 space-y-4">
+            {(model.quoteRuns ?? []).map((run) => (
+              <div key={run.title} className="rounded-[1.4rem] border border-line bg-panel p-4 text-sm">
+                <p className="font-semibold text-foreground">{run.title}</p>
+                <p className="mt-1 text-muted">{run.status}</p>
+                <p className="mt-2 text-muted">{run.note}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="card rounded-[2rem] p-6">
+          <h2 className="text-2xl font-semibold tracking-tight">Quote jobs</h2>
+          <div className="mt-5 space-y-4">
+            {(model.quoteJobs ?? []).map((job) => (
+              <div key={job.title} className="rounded-[1.4rem] border border-line bg-panel p-4 text-sm">
+                <p className="font-semibold text-foreground">{job.title}</p>
+                <p className="mt-1 text-muted">{job.status}</p>
+                <p className="mt-2 text-muted">{job.note}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
-

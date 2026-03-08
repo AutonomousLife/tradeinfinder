@@ -16,19 +16,19 @@ export function DeviceDetail({ model }: { model: DevicePageModel }) {
     <div className="grid gap-10">
       <VerdictCard
         eyebrow="Device overview"
-        title={lead ? `${model.device.model} looks best at ${lead.merchant.name}` : model.device.model}
-        summary={`This page keeps the decision simple: best direct trade-in, the resale alternative, and the cleanest next-phone path.`}
+        title={lead ? `${model.device.model} looks best at ${lead.merchant.name}` : `No live direct quote for ${model.device.model}`}
+        summary="This page keeps the decision simple: best direct trade-in, the resale alternative, and the cleanest next-phone path."
         valueLabel="Best visible value"
-        value={lead?.resolvedValue.displayValue ?? "Unavailable"}
-        rationale={lead ? `${lead.resolvedValue.whyValue} ${model.sellVsTrade.recommendation.copy}` : model.sellVsTrade.recommendation.copy}
+        value={lead?.resolvedValue.displayValue ?? resale?.displayValue ?? "Unavailable"}
+        rationale={lead ? `${lead.resolvedValue.whyValue} ${model.sellVsTrade.recommendation.copy}` : `${model.sellVsTrade.recommendation.copy} Direct store values stay hidden until a live quote exists.`}
         notes={[
           { label: "Best trade-in", value: model.sellVsTrade.summary[0]?.value ?? "Unavailable" },
           { label: "Best resale", value: model.sellVsTrade.summary[1]?.value ?? "Unavailable" },
           { label: "Difference", value: model.sellVsTrade.summary[2]?.value ?? "Unavailable" },
           { label: "Recommended move", value: model.sellVsTrade.recommendation.title },
         ]}
-        primaryCta={{ label: lead?.links.redemptionAffiliateLink ? `Open ${lead.merchant.name}` : "View best trade-in", href: lead?.links.redemptionAffiliateLink ?? lead?.links.redemptionLink ?? `/best-trade-in/${model.device.slug}`, external: Boolean(lead?.links.redemptionAffiliateLink) }}
-        secondaryCta={{ label: `Sell vs trade ${model.device.model}`, href: `/resale-vs-trade/${model.device.slug}` }}
+        primaryCta={{ label: lead?.links.redemptionAffiliateLink ? `Open ${lead.merchant.name}` : "Sell vs trade", href: lead?.links.redemptionAffiliateLink ?? `/resale-vs-trade/${model.device.slug}`, external: Boolean(lead?.links.redemptionAffiliateLink) }}
+        secondaryCta={{ label: `Best trade-in for ${model.device.model}`, href: `/best-trade-in/${model.device.slug}` }}
       />
 
       <TrendStrip device={model.device} leadPath={lead} />
@@ -38,12 +38,16 @@ export function DeviceDetail({ model }: { model: DevicePageModel }) {
           <div>
             <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-accent">Store scorecards</p>
             <h2 className="mt-3 text-balance text-3xl font-semibold tracking-[-0.04em]">Where this phone looks strongest.</h2>
-            <p className="mt-4 max-w-xl text-base leading-7 text-muted">A cleaner view of direct trade-in options, with confidence and freshness weighted into the ranking.</p>
+            <p className="mt-4 max-w-xl text-base leading-7 text-muted">Only live public quotes appear here. Seeded or manually reviewed merchant data stays in admin until it graduates to a real quote.</p>
           </div>
           <div>
-            {directPaths.map((path, index) => (
-              <StoreScorecard key={path.slug} path={path} rank={index + 1} />
-            ))}
+            {directPaths.length ? (
+              directPaths.map((path, index) => <StoreScorecard key={path.slug} path={path} rank={index + 1} />)
+            ) : (
+              <div className="rounded-[1.6rem] border border-line bg-surface/40 p-6 text-sm leading-6 text-muted">
+                No live direct trade-in quote is available for this phone right now. Resale benchmarks below still work because they are labeled as estimates.
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -66,24 +70,17 @@ export function DeviceDetail({ model }: { model: DevicePageModel }) {
         <div className="card rounded-[2rem] p-6 sm:p-8">
           <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-accent">Best simple upgrade path</p>
           <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em]">The easiest next move.</h2>
-          {upgrade && lead ? (
+          {upgrade ? (
             <div className="mt-6 border-t border-line pt-5">
               <p className="text-2xl font-semibold tracking-tight">{upgrade.title}</p>
               <p className="mt-3 text-sm leading-6 text-muted">{upgrade.subtitle}</p>
               <p className="mt-4 text-sm leading-6 text-muted">{upgrade.caveat}</p>
               <div className="mt-6 flex flex-wrap gap-3">
-                {lead.links.redemptionAffiliateLink ? (
-                  <a href={lead.links.redemptionAffiliateLink} target="_blank" rel="noreferrer" className="inline-flex rounded-full bg-accent px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-strong">
-                    Open {lead.merchant.name}
-                  </a>
-                ) : (
-                  <Link href={upgrade.href} className="inline-flex rounded-full bg-accent px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-strong">Open upgrade path</Link>
-                )}
                 <Link href={upgrade.href} className="inline-flex rounded-full border border-line px-4 py-2 text-sm font-semibold transition hover:bg-surface">View analysis</Link>
               </div>
             </div>
           ) : (
-            <p className="mt-6 text-sm leading-6 text-muted">No target phone was selected for this summary, so upgrade guidance is limited.</p>
+            <p className="mt-6 text-sm leading-6 text-muted">No simple upgrade path is public for this device yet because the live quote side is not populated.</p>
           )}
           <div className="mt-8 flex flex-wrap gap-3">
             {model.relatedLinks.map((link) => (

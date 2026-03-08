@@ -18,9 +18,9 @@ export default function HomePage() {
       <section className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.26em] text-accent">TradeInFinder</p>
-          <h1 className="mt-4 max-w-4xl text-balance text-5xl font-semibold tracking-[-0.05em] sm:text-6xl">What should you do with this phone right now?</h1>
+          <h1 className="mt-4 max-w-4xl text-balance text-5xl font-semibold tracking-[-0.05em] sm:text-6xl">Find the best real move for your phone.</h1>
           <p className="mt-5 max-w-2xl text-lg leading-8 text-muted">
-            Enter your phone once. TradeInFinder shows the best direct trade-in, the resale alternative, and the cleanest upgrade path without carrier-promo clutter.
+            Compare direct trade-in value, resale benchmarks, and the cleanest upgrade path without pretending seeded research is a live quote.
           </p>
           <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-3 text-sm text-muted">
             <span>Updated {formatRelativeDate(snapshot.freshness)}</span>
@@ -36,33 +36,52 @@ export default function HomePage() {
             ))}
           </div>
           <div className="mt-8">
-            <TrendStrip device={lead.device} leadPath={lead} />
+            <TrendStrip device={lead?.device ?? snapshot.trendingDevices[0] ?? snapshot.devices[0]} leadPath={lead} />
           </div>
         </div>
         <QuickStartForm devices={snapshot.devices} merchants={snapshot.merchants} defaultCurrentDevice="iphone-13-128" defaultTargetDevice="iphone-16-pro-256" mode="homepage" />
       </section>
 
-      <VerdictCard
-        eyebrow="Example answer"
-        title={`Trade in at ${lead.merchant.name}`}
-        summary={`${lead.device.model} currently looks strongest as a ${lead.offer.valueType.replace(/_/g, " ")} path. This is the kind of answer the site should give in one pass.`}
-        valueLabel="Shown value"
-        value={lead.resolvedValue.displayValue}
-        rationale={`${lead.resolvedValue.whyValue} ${resaleHighlight ? `Resale currently sits around ${resaleHighlight.displayValue}.` : ""}`}
-        notes={[
-          { label: "Confidence", value: lead.resolvedValue.confidenceLabel },
-          { label: "Updated", value: lead.resolvedValue.freshnessLabel },
-          { label: "Best move", value: lead.reasonBadge },
-          { label: "Caveat", value: lead.biggestCaveat },
-        ]}
-        primaryCta={{ label: `Open ${lead.merchant.name}`, href: lead.links.redemptionAffiliateLink ?? lead.links.redemptionLink, external: Boolean(lead.links.redemptionAffiliateLink) }}
-        secondaryCta={{ label: "View full breakdown", href: lead.links.redemptionLink }}
-      />
+      {lead ? (
+        <VerdictCard
+          eyebrow="Example answer"
+          title={`Trade in at ${lead.merchant.name}`}
+          summary={`${lead.device.model} currently has a live, public path that can be shown without hand-waving.`}
+          valueLabel="Shown value"
+          value={lead.resolvedValue.displayValue}
+          rationale={`${lead.resolvedValue.whyValue} ${resaleHighlight ? `Resale currently sits around ${resaleHighlight.displayValue}.` : ""}`}
+          notes={[
+            { label: "Confidence", value: lead.resolvedValue.confidenceLabel },
+            { label: "Updated", value: lead.resolvedValue.freshnessLabel },
+            { label: "Best move", value: lead.reasonBadge },
+            { label: "Caveat", value: lead.biggestCaveat },
+          ]}
+          primaryCta={{ label: `Open ${lead.merchant.name}`, href: lead.links.redemptionAffiliateLink ?? lead.links.redemptionLink, external: Boolean(lead.links.redemptionAffiliateLink) }}
+          secondaryCta={{ label: "View full breakdown", href: lead.links.redemptionLink }}
+        />
+      ) : (
+        <VerdictCard
+          eyebrow="Live quote status"
+          title="No public live trade-in quotes are connected yet"
+          summary="The public site now refuses to rank seeded merchant snapshots as if they were current values. Resale estimates still work, but direct store values stay hidden until a live quote capture exists."
+          valueLabel="Current state"
+          value="Waiting for live quotes"
+          rationale="This is the honest behavior: Best Buy, Apple, Samsung, and similar merchants should not appear as current values unless TradeInFinder captured a recent quote that can be audited."
+          notes={[
+            { label: "Public quotes", value: String(snapshot.heroStats.offerCount) },
+            { label: "Resale", value: snapshot.heroStats.bestResaleValue },
+            { label: "Coverage", value: `${snapshot.heroStats.deviceCoverage} phones` },
+            { label: "Why", value: "Seeded research moved behind admin" },
+          ]}
+          primaryCta={{ label: "Run a search anyway", href: "/search" }}
+          secondaryCta={{ label: "See methodology", href: "/methodology" }}
+        />
+      )}
 
       <section className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr]">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-accent">How it works</p>
-          <h2 className="mt-3 text-balance text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">A simpler product structure.</h2>
+          <h2 className="mt-3 text-balance text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">Trade-in values only show up when the app can defend them.</h2>
         </div>
         <div className="grid gap-6 sm:grid-cols-3">
           {snapshot.methodologySteps.map((step) => (
@@ -79,13 +98,17 @@ export default function HomePage() {
         <div className="grid gap-8 lg:grid-cols-[0.95fr_1.05fr]">
           <div>
             <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-accent">Best direct trade-in deals</p>
-            <h2 className="mt-3 text-balance text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">The strongest store paths right now.</h2>
-            <p className="mt-4 max-w-xl text-base leading-7 text-muted">A short list of the cleanest values in the current dataset, weighted by freshness and trust instead of headline numbers alone.</p>
+            <h2 className="mt-3 text-balance text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">Only current public quotes belong here.</h2>
+            <p className="mt-4 max-w-xl text-base leading-7 text-muted">If this list is empty, that means the live quote pipeline is not populated yet. The site will not backfill it with seeded merchant numbers and pretend they are current.</p>
           </div>
           <div>
-            {snapshot.bestDeals.slice(0, 3).map((path, index) => (
-              <StoreScorecard key={path.slug} path={path} rank={index + 1} />
-            ))}
+            {snapshot.bestDeals.length ? (
+              snapshot.bestDeals.slice(0, 3).map((path, index) => <StoreScorecard key={path.slug} path={path} rank={index + 1} />)
+            ) : (
+              <div className="rounded-[1.6rem] border border-line bg-surface/40 p-6 text-sm leading-6 text-muted">
+                No public live trade-in quotes are available yet. Resale benchmarks remain visible because they are explicitly labeled as estimates.
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -93,7 +116,7 @@ export default function HomePage() {
       <section className="grid gap-8 lg:grid-cols-[1fr_1fr]">
         <div className="card rounded-[2rem] p-6 sm:p-8">
           <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-accent">Sell vs trade</p>
-          <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em]">When selling is worth the hassle.</h2>
+          <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em]">Resale stays visible even when trade-in is unavailable.</h2>
           <div className="mt-6 space-y-4">
             {snapshot.sellVsTradeHighlights.slice(0, 2).map((option) => (
               <Link key={option.slug} href={option.href} className="block border-t border-line pt-4 first:border-t-0 first:pt-0">
@@ -115,7 +138,7 @@ export default function HomePage() {
             {snapshot.trendingDevices.slice(0, 6).map((device) => (
               <Link key={device.slug} href={`/device/${device.slug}`} className="border-t border-line pt-4 first:border-t-0 first:pt-0">
                 <p className="text-base font-semibold tracking-tight">{device.model}</p>
-                <p className="mt-2 text-sm leading-6 text-muted">See direct trade-in value, resale context, and the best simple next step.</p>
+                <p className="mt-2 text-sm leading-6 text-muted">See direct trade-in status, resale context, and the cleanest next step.</p>
               </Link>
             ))}
           </div>

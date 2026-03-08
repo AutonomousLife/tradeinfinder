@@ -18,14 +18,14 @@ export function MerchantDetail({ model }: { model: MerchantPageModel }) {
         summary={model.merchant.notes}
         valueLabel="Store score"
         value={`${Math.round(model.merchant.trustScore * 100)}%`}
-        rationale={lead ? `${lead.merchant.name} currently looks strongest when the path is ${lead.offer.valueType.replace(/_/g, " ")} and the data is fresh enough to trust.` : "This store page stays focused on simple direct value and readable trade-off decisions."}
+        rationale={lead ? `${lead.merchant.name} currently has at least one public quote path that is safe to show.` : "This store page is currently acting as a guide, not proof of live trade-in coverage. Public scorecards stay empty until a real quote capture is available."}
         notes={[
           { label: "Type", value: model.merchant.type.replace(/_/g, " ") },
           { label: "Average confidence", value: averageConfidence },
           { label: "Direct links", value: model.merchant.affiliateCapable ? "Affiliate-ready" : "Direct only" },
-          { label: "Coverage", value: `${model.paths.length} visible scored paths` },
+          { label: "Public paths", value: `${model.paths.length}` },
         ]}
-        primaryCta={{ label: lead?.links.redemptionAffiliateLink ? `Open ${model.merchant.name}` : `View ${model.merchant.name} results`, href: lead?.links.redemptionAffiliateLink ?? `/store/${model.merchant.slug}`, external: Boolean(lead?.links.redemptionAffiliateLink) }}
+        primaryCta={{ label: lead?.links.redemptionAffiliateLink ? `Open ${model.merchant.name}` : `View ${model.merchant.name} methodology`, href: lead?.links.redemptionAffiliateLink ?? "/methodology", external: Boolean(lead?.links.redemptionAffiliateLink) }}
         secondaryCta={{ label: "Methodology", href: "/methodology" }}
       />
 
@@ -34,12 +34,16 @@ export function MerchantDetail({ model }: { model: MerchantPageModel }) {
           <div>
             <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-accent">Store scorecards</p>
             <h2 className="mt-3 text-balance text-3xl font-semibold tracking-[-0.04em]">Phones this store rates well right now.</h2>
-            <p className="mt-4 max-w-xl text-base leading-7 text-muted">These scorecards are meant to read like advice, not a wall of filters. Fresh exact matches outrank louder stale estimates.</p>
+            <p className="mt-4 max-w-xl text-base leading-7 text-muted">These scorecards are intentionally strict. If there is no live public quote, the page would rather show nothing than recycle old seeded numbers as if they were current.</p>
           </div>
           <div>
-            {model.paths.slice(0, 5).map((path, index) => (
-              <StoreScorecard key={path.slug} path={path} rank={index + 1} />
-            ))}
+            {model.paths.length ? (
+              model.paths.slice(0, 5).map((path, index) => <StoreScorecard key={path.slug} path={path} rank={index + 1} />)
+            ) : (
+              <div className="rounded-[1.6rem] border border-line bg-surface/40 p-6 text-sm leading-6 text-muted">
+                No public live quotes are available for this store yet. Check admin for seeded research and quote-run status.
+              </div>
+            )}
           </div>
         </div>
       </section>
