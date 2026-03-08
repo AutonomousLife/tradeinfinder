@@ -16,6 +16,8 @@ const envSchema = z.object({
   QUOTE_WORKER_URL: z.string().url().optional(),
   QUOTE_WORKER_TOKEN: z.string().optional(),
   QUOTE_USER_AGENT: z.string().optional(),
+  BROWSER_WS_ENDPOINT: z.string().optional(),
+  BROWSER_EXECUTABLE_PATH: z.string().optional(),
 });
 
 export const env = envSchema.parse({
@@ -31,4 +33,6 @@ export const env = envSchema.parse({
   QUOTE_WORKER_URL: process.env.QUOTE_WORKER_URL,
   QUOTE_WORKER_TOKEN: process.env.QUOTE_WORKER_TOKEN,
   QUOTE_USER_AGENT: process.env.QUOTE_USER_AGENT,
+  BROWSER_WS_ENDPOINT: process.env.BROWSER_WS_ENDPOINT,
+  BROWSER_EXECUTABLE_PATH: process.env.BROWSER_EXECUTABLE_PATH,
 });
