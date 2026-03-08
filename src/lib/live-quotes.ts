@@ -210,3 +210,15 @@ export function getPublicQuoteRecordsForMerchant(merchantSlug: string): ValueRec
 export function getQuoteWorkerHeaders() {
   return env.QUOTE_WORKER_TOKEN ? { Authorization: `Bearer ${env.QUOTE_WORKER_TOKEN}` } : {};
 }
+export function getTopQuoteRefreshTargets(limit = 6) {
+  return devices
+    .filter((device) => device.preferredStoreSlugs.includes("best-buy"))
+    .sort((a, b) => b.searchVolume - a.searchVolume || b.trendScore - a.trendScore)
+    .slice(0, limit)
+    .map((device) => ({
+      merchantSlug: "best-buy" as const,
+      deviceSlug: device.slug,
+      condition: "good" as const,
+      targetDeviceSlug: null,
+    }));
+}
